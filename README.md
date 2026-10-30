@@ -7,18 +7,23 @@ Procedural fluid strands, climax fluids and residue for Fallout 4, built as an F
 Scaffold only. What is here:
 
 - `src/fluid/`: the particle fluid solver from OStrands. It has no engine dependencies and builds on its own as the `FourStrandsFluid` library.
-- `src/GeometryMath.h`, `src/AtomicFile.h`: helpers from OStrands. GeometryMath needs CommonLibF4's `RE::NiPoint3`.
-- `src/main.cpp`: an F4SE plugin entry stub.
+- `src/GeometryMath.h`, `src/AtomicFile.h`: helpers from OStrands.
+- `src/main.cpp`, `src/FourStimBridge.cpp`: the F4SE plugin entry and the 4Stim connection. It gets 4Stim's thread interface and logs scene start, scene change, speed, climax and stop.
+- `extern/4stim/PluginInterface.h`: 4Stim's C++ API header, copied from KeryoWolfe/4Stim.
 
 Nothing game-facing is ported yet. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Building
 
-1. Install Visual Studio with C++ tools and vcpkg (set `VCPKG_ROOT`).
-2. Clone a CommonLibF4 fork that matches your Fallout 4 build into `extern/CommonLibF4`.
-3. `cmake --preset release` then `cmake --build --preset release`.
+4Strands builds the same way as 4Stim: [xmake](https://xmake.io) 3.0+ and Visual Studio's C++ tools, with [libxse/commonlibf4](https://github.com/libxse/commonlibf4) as a submodule pinned to the same commit as 4Stim's.
 
-Without CommonLibF4, only the fluid library builds.
+```
+git clone --recursive https://github.com/jturnley/4Strands
+cd 4Strands
+xmake build -r
+```
+
+Set `XSE_FO4_MODS_PATH` (MO2's mods folder) or `XSE_FO4_GAME_PATH` and `xmake install` copies the plugin there. For now the target is Fallout 4 1.11.240 with the Address Library. 4Stim's Runtime Database support for other game versions lives in 4Stim's own `src/compat`, not in CommonLibF4.
 
 ## Credits and license
 

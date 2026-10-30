@@ -4,9 +4,12 @@ Notes from reading the 4Stim 0.4.0 alpha build (plugin, Papyrus sources, INI). N
 
 ## C++ plugin interface
 
-4Stim.dll carries an OStim-style plugin interface in the `FourStimAPI` namespace: `PluginInterface`, `InterfaceMap`, `ThreadInterface`, `Thread`, `ThreadActor`, `ThreadBuilder`, `AlignmentInterface` (with `AlignmentOffset`), `SexToyInterface`. It hands the interface map to other plugins over F4SE messaging ("Plugin interface: handed to ..."), as OStim does. The headers are not in the release archive, so 4Strands needs them from the 4Stim source.
+4Stim's API header is vendored at `extern/4stim/PluginInterface.h` (from KeryoWolfe/4Stim). 4Strands gets the interface map by dispatching `'4ST'` to "4Stim" at kPostLoad (`src/FourStimBridge.cpp`). The `Threads` interface gives thread start, scene change, speed, climax (per actor) and stop listeners, plus `Thread` / `ThreadActor` with excitement and `getGameActor()`. `Alignment` gives per-actor offsets.
 
-This is what OStrands' `OStimBridge` talks to on Skyrim, so that bridge should port with renames once the headers are in `extern/4stim`.
+What's missing compared with OStim: there is **no GraphInterface**. Scenes are passed by ID, and their actions (type, actor, target, tags) aren't available from C++. OStrands' `OStimBridge` classifies each pair from OStim action tags (`vaginalpenetration`, `fellatio`, ...). For 4Strands, either:
+
+1. 4Stim adds a small C++ scene/action query to its API (preferred, since the same team owns both), or
+2. 4Strands reads 4Stim's scene files (`F4SE/Plugins/4Stim/Scenes/*.json`) and action types (`Actions/*.json`) itself and looks up the current scene ID.
 
 ## Papyrus fallback
 
@@ -29,4 +32,4 @@ Registrations are not saved: register again on every game load. Action types and
 
 ## Game versions
 
-4Stim targets 1.11.240 with Address Library, and 1.10.163, 1.10.984 and other 1.11 builds through the Runtime Database. 4Strands should build against the same CommonLibF4 fork 4Stim uses so the two match.
+4Stim targets 1.11.240 with Address Library, and 1.10.163, 1.10.984 and other 1.11 builds through the Runtime Database. 4Strands uses the same libxse/commonlibf4 commit as 4Stim (submodule `lib/commonlibf4`).

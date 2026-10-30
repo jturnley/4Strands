@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstddef>
 
-#include <RE/NetImmerse/NiPoint3.h>  // TODO: confirm header path in the chosen CommonLibF4 fork
+#include <RE/N/NiPoint3.h>
 
 namespace FourStrands::GeometryMath
 {

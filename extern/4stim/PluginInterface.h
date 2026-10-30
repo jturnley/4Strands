@@ -1,5 +1,6 @@
-// Copied unchanged from KeryoWolfe/4Stim (include/4Stim/PluginInterface.h, commit e21315e),
-// GPL-3.0 with 4Stim's modding exception. 4Stim's header says to copy it into plugins that use it.
+// Copied from KeryoWolfe/4Stim (include/4Stim/PluginInterface.h, commit e21315e) plus the proposed
+// "Scenes" interface (patches/4Stim-scenes-interface.patch), GPL-3.0 with 4Stim's modding exception.
+// 4Stim's header says to copy it into plugins that use it.
 
 #pragma once
 
@@ -22,9 +23,10 @@
 // - The namespace is FourStimAPI and the message type '4ST' (OStim: OStim,
 //   'OST'), so a plugin can talk to both.
 // - Scenes are passed by ID (const char*), not as OStim's Graph::Node
-//   objects; scene data is read through FourStim's Papyrus functions or the
-//   scene files. OStim's GraphInterface, FurnitureInterface and
-//   SettingInterface aren't here; 4Stim adds an "Alignment" interface.
+//   objects; a scene's actions are read through the "Scenes" interface,
+//   other scene data through FourStim's Papyrus functions or the scene
+//   files. OStim's GraphInterface, FurnitureInterface and SettingInterface
+//   aren't here; 4Stim adds "Alignment" and "Scenes" interfaces.
 // - ThreadActor has no undressPartial / redressPartial (4Stim undresses
 //   whole items, docs/UNDRESS.md).
 //
@@ -207,6 +209,26 @@ namespace FourStimAPI
 		virtual bool setOffset(std::int32_t threadID, std::uint32_t position, const AlignmentOffset* offset) = 0;
 		// Back to the scene's own.
 		virtual bool resetOffset(std::int32_t threadID, std::uint32_t position) = 0;
+	};
+
+	// ---- Scenes (4Stim's own; OStim's GraphInterface hands out Graph::Node instead) ----
+
+	class SceneInterface : public PluginInterface
+	{
+	public:
+		inline static const char* NAME = "Scenes";
+
+		// --- ABI version 1 ---
+		// A scene's actions (docs/ACTIONS.md), by scene ID, as FourStim's
+		// GetSceneActionCount / GetSceneActionType / GetSceneActionRole /
+		// ActionHasTag. Strings stay valid until the scenes are reloaded.
+		virtual std::uint32_t getActionCount(const char* sceneID) = 0;
+		// The action type id ("vaginalsex", "blowjob"...), or "" if there's no such action.
+		virtual const char* getActionType(const char* sceneID, std::uint32_t index) = 0;
+		// which: 0 actor, 1 target, 2 performer. The role index, or -1.
+		virtual std::int32_t getActionRole(const char* sceneID, std::uint32_t index, std::uint32_t which) = 0;
+		// Whether the action type (id or alias) has the tag ("oral", "vaginalpenetration"...).
+		virtual bool actionTypeHasTag(const char* type, const char* tag) = 0;
 	};
 
 	// ---- Sex toys (OStim's SexToyInterface, the same) ----

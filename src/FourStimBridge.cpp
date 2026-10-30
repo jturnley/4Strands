@@ -17,6 +17,22 @@ namespace FourStrands::FourStimBridge
 			return name ? name : "?";
 		}
 
+		FourStimAPI::SceneInterface* scenes{ nullptr };
+
+		// Logs what each role does in the scene. Needs 4Stim's "Scenes" interface (patches/).
+		void LogActions(const char* a_sceneID)
+		{
+			if (!scenes || !a_sceneID) {
+				return;
+			}
+			const auto count = scenes->getActionCount(a_sceneID);
+			for (std::uint32_t i = 0; i < count; ++i) {
+				const char* type = scenes->getActionType(a_sceneID, i);
+				REX::INFO("  action {}: {} by role {} on role {}{}", i, type, scenes->getActionRole(a_sceneID, i, 0), scenes->getActionRole(a_sceneID, i, 1),
+					scenes->actionTypeHasTag(type, "sexual") ? " (sexual)" : "");
+			}
+		}
+
 		// For now each listener only logs, so the Phase 0 spike can confirm the events arrive.
 		struct ThreadStarted : FourStimAPI::ThreadEventListener
 		{
@@ -31,6 +47,7 @@ namespace FourStrands::FourStimBridge
 			void listen(FourStimAPI::Thread* a_thread) override
 			{
 				REX::INFO("4Stim thread {} now in {}", a_thread->getThreadID(), a_thread->getCurrentSceneID());
+				LogActions(a_thread->getCurrentSceneID());
 			}
 		};
 
@@ -87,5 +104,10 @@ namespace FourStrands::FourStimBridge
 		threads->registerThreadStopListener(&stopped);
 		threads->registerClimaxListener(&climaxed);
 		REX::INFO("4Stim thread interface version {}: following its scenes", threads->getVersion());
+
+		scenes = static_cast<FourStimAPI::SceneInterface*>(message.interfaceMap->queryInterface(FourStimAPI::SceneInterface::NAME));
+		if (!scenes) {
+			REX::WARN("4Stim has no \"Scenes\" interface (older 4Stim): scene actions are unknown");
+		}
 	}
 }

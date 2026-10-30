@@ -6,10 +6,9 @@ Notes from reading the 4Stim 0.4.0 alpha build (plugin, Papyrus sources, INI). N
 
 4Stim's API header is vendored at `extern/4stim/PluginInterface.h` (from KeryoWolfe/4Stim). 4Strands gets the interface map by dispatching `'4ST'` to "4Stim" at kPostLoad (`src/FourStimBridge.cpp`). The `Threads` interface gives thread start, scene change, speed, climax (per actor) and stop listeners, plus `Thread` / `ThreadActor` with excitement and `getGameActor()`. `Alignment` gives per-actor offsets.
 
-What's missing compared with OStim: there is **no GraphInterface**. Scenes are passed by ID, and their actions (type, actor, target, tags) aren't available from C++. OStrands' `OStimBridge` classifies each pair from OStim action tags (`vaginalpenetration`, `fellatio`, ...). For 4Strands, either:
+What's missing compared with OStim: there is **no GraphInterface**, so a scene's actions (type, actor, target, tags) aren't available from C++. OStrands' `OStimBridge` classifies each pair from OStim action tags (`vaginalpenetration`, `fellatio`, ...).
 
-1. 4Stim adds a small C++ scene/action query to its API (preferred, since the same team owns both), or
-2. 4Strands reads 4Stim's scene files (`F4SE/Plugins/4Stim/Scenes/*.json`) and action types (`Actions/*.json`) itself and looks up the current scene ID.
+Decision (2026-10-30): add a small **"Scenes"** interface to 4Stim. The proposed change is `patches/4Stim-scenes-interface.patch`, against KeryoWolfe/4Stim `e21315e`. It reuses the code behind FourStim's Papyrus action functions and provides `getActionCount`, `getActionType`, `getActionRole` and `actionTypeHasTag`. `extern/4stim/PluginInterface.h` already includes it. 4Strands asks for it at load and logs a warning when it's missing.
 
 ## Papyrus fallback
 

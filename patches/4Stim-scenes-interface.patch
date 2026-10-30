@@ -1,0 +1,141 @@
+From 42267d97a10881a63cf46d1554f697f718a8dbbf Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 30 Oct 2026 21:15:40 +0000
+Subject: [PATCH] Add a "Scenes" plugin interface for a scene's actions
+
+Plugins could follow threads and scene IDs but had no C++ way to read what
+each role is doing. The new interface exposes a scene's actions (type and
+actor / target / performer roles) and action-type tags, using the same code
+as FourStim's Papyrus action functions. 4Strands needs it to pick strand and
+fluid emitters per pair, as OStrands does with OStim's GraphInterface.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0112X7kuGtdgdzc7DBpBop3V
+---
+ docs/API.md                     |  1 +
+ include/4Stim/PluginInterface.h | 27 ++++++++++++++++++++++---
+ src/main.cpp                    | 35 ++++++++++++++++++++++++++++++++-
+ 3 files changed, 59 insertions(+), 4 deletions(-)
+
+diff --git a/docs/API.md b/docs/API.md
+index c44baca..3a080c0 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -105,6 +105,7 @@ if (message.interfaceMap) {
+ 
+ - **"Threads"** (OStim's `ThreadInterface`): `getThread(id)`; listeners for thread start, speed change, scene change (OStim's node changed), climax and thread stop; `createThreadBuilder(count, actors)` (the Papyrus builder's options; `start()` / `cancel()` free it); `getActor(actor)`. A `Thread` gives its ID, whether it's the player's, its actors, scene, speed and furniture, and can navigate, warp, change speed or stop; a `ThreadActor` gives the game actor, undresses / redresses, removes / adds weapons, and (4Stim) reads and sets excitement and climaxes.
+ - **"Alignment"** (4Stim's own): a thread actor's alignment offset in the current scene (sideways, forward, up, rotation, scale, penis bend), read, set (saved, applied at once) or reset, as the HUD's Align tab does.
++- **"Scenes"** (4Stim's own): a scene's actions by scene ID: how many, each one's type and its actor / target / performer roles, and whether an action type has a tag, as FourStim's Papyrus action functions. Lets a plugin tell what each pair in the current scene is doing (OStim plugins use the GraphInterface's nodes for this).
+ - **"SexToys"** (OStim's `SexToyInterface`, the same): device plugins register a reload listener once and add their toys whenever it's called.
+ 
+ Listeners are called on the game's main thread, and the `Thread` / `ThreadActor` objects stay valid for the session (a stopped thread says so with `isRunning()`).
+diff --git a/include/4Stim/PluginInterface.h b/include/4Stim/PluginInterface.h
+index 4483016..c19181f 100644
+--- a/include/4Stim/PluginInterface.h
++++ b/include/4Stim/PluginInterface.h
+@@ -19,9 +19,10 @@
+ // - The namespace is FourStimAPI and the message type '4ST' (OStim: OStim,
+ //   'OST'), so a plugin can talk to both.
+ // - Scenes are passed by ID (const char*), not as OStim's Graph::Node
+-//   objects; scene data is read through FourStim's Papyrus functions or the
+-//   scene files. OStim's GraphInterface, FurnitureInterface and
+-//   SettingInterface aren't here; 4Stim adds an "Alignment" interface.
++//   objects; a scene's actions are read through the "Scenes" interface,
++//   other scene data through FourStim's Papyrus functions or the scene
++//   files. OStim's GraphInterface, FurnitureInterface and SettingInterface
++//   aren't here; 4Stim adds "Alignment" and "Scenes" interfaces.
+ // - ThreadActor has no undressPartial / redressPartial (4Stim undresses
+ //   whole items, docs/UNDRESS.md).
+ //
+@@ -206,6 +207,26 @@ namespace FourStimAPI
+ 		virtual bool resetOffset(std::int32_t threadID, std::uint32_t position) = 0;
+ 	};
+ 
++	// ---- Scenes (4Stim's own; OStim's GraphInterface hands out Graph::Node instead) ----
++
++	class SceneInterface : public PluginInterface
++	{
++	public:
++		inline static const char* NAME = "Scenes";
++
++		// --- ABI version 1 ---
++		// A scene's actions (docs/ACTIONS.md), by scene ID, as FourStim's
++		// GetSceneActionCount / GetSceneActionType / GetSceneActionRole /
++		// ActionHasTag. Strings stay valid until the scenes are reloaded.
++		virtual std::uint32_t getActionCount(const char* sceneID) = 0;
++		// The action type id ("vaginalsex", "blowjob"...), or "" if there's no such action.
++		virtual const char* getActionType(const char* sceneID, std::uint32_t index) = 0;
++		// which: 0 actor, 1 target, 2 performer. The role index, or -1.
++		virtual std::int32_t getActionRole(const char* sceneID, std::uint32_t index, std::uint32_t which) = 0;
++		// Whether the action type (id or alias) has the tag ("oral", "vaginalpenetration"...).
++		virtual bool actionTypeHasTag(const char* type, const char* tag) = 0;
++	};
++
+ 	// ---- Sex toys (OStim's SexToyInterface, the same) ----
+ 
+ 	class SexToy
+diff --git a/src/main.cpp b/src/main.cpp
+index d8b6c1e..5907257 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -8141,7 +8141,7 @@ namespace
+ 	// ---- C++ plugin interface (include/4Stim/PluginInterface.h, docs/API.md) ----
+ 	// OStim's PluginInterfaceImplementation: an interface map other F4SE
+ 	// plugins get with an InterfaceExchangeMessage, holding "Threads",
+-	// "Alignment" (4Stim's) and "SexToys" (SexToys.cpp). Threads and their
++	// "Alignment" and "Scenes" (4Stim's) and "SexToys" (SexToys.cpp). Threads and their
+ 	// actors are handed out as objects that live for the session: a thread
+ 	// keeps a copy of what it last was, so a stop listener can still read it.
+ 	namespace API
+@@ -8444,6 +8444,37 @@ namespace
+ 			}
+ 		};
+ 
++		// 4Stim's own: a scene's actions, for plugins (OStim's GraphInterface
++		// hands out Graph::Node, which 4Stim doesn't have).
++		class SceneInterfaceImpl final : public FourStimAPI::SceneInterface
++		{
++		public:
++			std::uint32_t getVersion() override { return 1; }
++
++			std::uint32_t getActionCount(const char* a_sceneID) override
++			{
++				const auto scene = a_sceneID ? SceneRegistry::Find(a_sceneID) : nullptr;
++				return scene ? static_cast<std::uint32_t>(scene->actions.size()) : 0;
++			}
++
++			const char* getActionType(const char* a_sceneID, std::uint32_t a_index) override
++			{
++				const auto scene = a_sceneID ? SceneRegistry::Find(a_sceneID) : nullptr;
++				const auto action = SceneActionAt(scene.get(), static_cast<std::int32_t>(a_index));
++				return action ? action->type->id.c_str() : "";
++			}
++
++			std::int32_t getActionRole(const char* a_sceneID, std::uint32_t a_index, std::uint32_t a_which) override
++			{
++				return a_sceneID ? GetSceneActionRole({}, a_sceneID, static_cast<std::int32_t>(a_index), static_cast<std::int32_t>(a_which)) : -1;
++			}
++
++			bool actionTypeHasTag(const char* a_type, const char* a_tag) override
++			{
++				return a_type && a_tag && ActionHasTag({}, a_type, a_tag);
++			}
++		};
++
+ 		class InterfaceMapImpl final : public FourStimAPI::InterfaceMap
+ 		{
+ 		public:
+@@ -8482,8 +8513,10 @@ namespace
+ 				filled = true;
+ 				static ThreadInterfaceImpl    threads;
+ 				static AlignmentInterfaceImpl alignment;
++				static SceneInterfaceImpl     scenes;
+ 				map.addInterface(FourStimAPI::ThreadInterface::NAME, &threads);
+ 				map.addInterface(FourStimAPI::AlignmentInterface::NAME, &alignment);
++				map.addInterface(FourStimAPI::SceneInterface::NAME, &scenes);
+ 				map.addInterface(FourStimAPI::SexToyInterface::NAME, SexToys::Interface());
+ 			}
+ 			return &map;
+-- 
+2.43.0
+

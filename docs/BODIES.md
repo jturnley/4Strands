@@ -29,6 +29,10 @@ ZeX also has `_CBP_` copies of the genital and breast chains for physics. The Sc
 - A-Body (male) `MaleBody.nif` / `BaseMaleBodyFULL.nif` are `BSSubIndexTriShape` with `BSSkin`, weighted to `Penis_00`-`Penis_05` **and** their FSMP copies `Penis_01_SMP`-`Penis_05_SMP`, `Penis_Offset_SMP`, `Penis_Balls_01_SMP`, `Penis_Ball_SMP.L/R`. The extended skeleton nodes it references include the `_Offset` chain, among them `Penis_01_Offset` (4Stim's bend node). It is also weighted to `Anus_00`-`04` and `Anus_01-04_SMP`.
 - Because the visible shaft follows the SMP bones while FSMP runs (including 4Stim's `MaleBodyHard.xml` swap), 4Strands should read the shaft chain from `Penis_0N_SMP` when that node exists and fall back to `Penis_0N`. The same applies to `Anus_0N_SMP` for male receivers.
 
+## Does TWB have penetration geometry? No
+
+Checked by decoding the vertex positions in TWB SMP's BodySlide mesh (22,685 vertices). This was a script, not a visual check in Outfit Studio. The crotch has dense surface detail: about 285 vertices in the 1-unit slice at the crotch floor, which matches its `Pussy Down` / `Pussy Pinch` sliders. But **no vertices go up into the body** from the vulva. Above the crotch floor, the only vertices between the front and back surfaces of the midline are the gluteal cleft, which rises along the back. So TWB has an external vulva and no vaginal or anal canal, and it has no weights on ZeX's `Vagina_` / `Anus_` bones. Penetration in animations clips into a closed surface.
+
 ## GT Softbody (Skyrim SE) genitals on TWB: findings
 
 GT Softbody v3.37.2 is a **Skyrim SE** body, not a Fallout 4 one. Its CBBE body shape (`NakedBody/CBBE/.../GT_Softbody (CBBE).nif`) is a Skyrim `BSTriShape` with `NiSkinInstance`/`NiSkinPartition`. Its genitals are rigged to a dense 3BA-style set of bones that ZeX doesn't have:

@@ -1,6 +1,7 @@
 #include "FourStimBridge.h"
 
 #include "PluginInterface.h"
+#include "Spike.h"
 
 namespace FourStrands::FourStimBridge
 {
@@ -39,6 +40,9 @@ namespace FourStrands::FourStimBridge
 			void listen(FourStimAPI::Thread* a_thread) override
 			{
 				REX::INFO("4Stim thread {} started in {} with {} actor(s)", a_thread->getThreadID(), a_thread->getCurrentSceneID(), a_thread->getActorCount());
+				for (std::uint32_t i = 0; i < a_thread->getActorCount(); ++i) {
+					Spike::QueueProbe(ActorOf(a_thread->getActor(i)));
+				}
 			}
 		};
 

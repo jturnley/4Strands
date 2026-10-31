@@ -10,6 +10,7 @@ Scaffold only. What is here:
 - `src/GeometryMath.h`, `src/AtomicFile.h`: helpers from OStrands.
 - `src/main.cpp`, `src/FourStimBridge.cpp`: the F4SE plugin entry and the 4Stim connection. It gets 4Stim's thread interface and logs scene start, scene change, speed, climax and stop.
 - `extern/4stim/PluginInterface.h`: 4Stim's C++ API header, copied from KeryoWolfe/4Stim.
+- The Phase 0 spike: a frame hook, a body vertex probe and one test strand. See [docs/SPIKE.md](docs/SPIKE.md). It builds but hasn't run in game.
 
 Nothing game-facing is ported yet. See [docs/PLAN.md](docs/PLAN.md).
 
@@ -20,8 +21,11 @@ Nothing game-facing is ported yet. See [docs/PLAN.md](docs/PLAN.md).
 ```
 git clone --recursive https://github.com/jturnley/4Strands
 cd 4Strands
+xmake f --toolchain=msvc
 xmake build -r
 ```
+
+Build from PowerShell or a Developer prompt. If a MinGW GCC (for example w64devkit) is on PATH, xmake's package builds pick it up and fail.
 
 Set `XSE_FO4_MODS_PATH` (MO2's mods folder) or `XSE_FO4_GAME_PATH` and `xmake install` copies the plugin there. For now the target is Fallout 4 1.11.240 with the Address Library. 4Stim's Runtime Database support for other game versions lives in 4Stim's own `src/compat`, not in CommonLibF4.
 

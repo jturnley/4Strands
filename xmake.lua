@@ -29,7 +29,7 @@ target("4Strands")
     })
 
     add_deps("FourStrandsFluid")
-    add_files("src/main.cpp", "src/FourStimBridge.cpp")
+    add_files("src/*.cpp")
     add_headerfiles("src/*.h", "extern/4stim/*.h")
     add_includedirs("src", "extern/4stim")
     set_pcxxheader("src/PCH.h")

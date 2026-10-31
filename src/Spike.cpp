@@ -15,11 +15,24 @@ namespace FourStrands::Spike
 		std::vector<RE::TESFormID> queued;
 		std::atomic_bool           probePlayer{ false };
 
+		// On the first frames after a load the skeleton's world transforms aren't updated yet (the first probe saw the
+		// root near the origin), so the spike waits this long after the player's 3D appears.
+		constexpr float kSettleSeconds = 2.0f;
+		float           settled{ 0.0f };
+
 		void OnFrame(RE::PlayerCharacter* a_player, float a_delta)
 		{
+			if (!a_player->Get3D()) {
+				settled = 0.0f;
+				return;
+			}
+			if (settled < kSettleSeconds) {
+				settled += a_delta;
+				return;
+			}
 			const auto& settings = Settings::Get();
 			if (settings.probeBody) {
-				if (probePlayer && a_player->Get3D()) {
+				if (probePlayer) {
 					probePlayer = false;
 					BodyProbe::Probe(a_player);
 				}
@@ -45,6 +58,7 @@ namespace FourStrands::Spike
 
 	void OnGameLoaded()
 	{
+		settled = 0.0f;
 		probePlayer = true;
 	}
 

@@ -13,6 +13,26 @@ namespace FourStrands
 		constexpr std::size_t kScanFrom = 0x170;
 		constexpr std::size_t kScanTo = 0x1C0;
 
+		// IRendererResourceManager declares two CreateDynamicTriShape overloads in a row, and MSVC lays out adjacent
+		// overloads in reverse, so calling the long one through CommonLibF4's header reaches the short one (slot 9) and
+		// crashes. Call the long one by its slot instead.
+		constexpr std::size_t kCreateDynamicTriShapeSlot = 8;
+
+		RE::BSTriShape* CreateDynamicTriShape(RE::BSShaderResourceManager* a_manager, std::uint32_t a_dynamicFlags, std::uint32_t a_numTriangles,
+			std::uint16_t* a_indices, std::uint32_t a_numVertices, RE::NiPoint3* a_positions, RE::NiPoint2* a_texCoords0, RE::NiColorA* a_texCoords1,
+			RE::NiPoint3* a_normals, RE::NiPoint3* a_binormals, RE::NiPoint3* a_tangents, RE::NiColorA* a_colors, RE::NiColorA* a_skinBoneWeights,
+			std::uint8_t* a_skinBoneIndices, RE::NiColorA* a_landscapeData1, RE::NiColorA* a_landscapeData2, float* a_eyeData)
+		{
+			using func_t = RE::BSTriShape* (*)(RE::IRendererResourceManager*, std::uint32_t, std::uint32_t, std::uint16_t*, std::uint32_t, RE::NiPoint3*,
+				RE::NiPoint2*, RE::NiColorA*, RE::NiPoint3*, RE::NiPoint3*, RE::NiPoint3*, RE::NiColorA*, RE::NiColorA*, std::uint8_t*, RE::NiColorA*,
+				RE::NiColorA*, float*);
+			RE::IRendererResourceManager* manager = a_manager;
+			const auto* vtable = *reinterpret_cast<func_t* const*>(manager);
+			return vtable[kCreateDynamicTriShapeSlot](manager, a_dynamicFlags, a_numTriangles, a_indices, a_numVertices, a_positions, a_texCoords0,
+				a_texCoords1, a_normals, a_binormals, a_tangents, a_colors, a_skinBoneWeights, a_skinBoneIndices, a_landscapeData1, a_landscapeData2,
+				a_eyeData);
+		}
+
 		RE::NiObject* Clone(RE::NiObject* a_object)
 		{
 			RE::NiCloningProcess process{};
@@ -101,8 +121,8 @@ namespace FourStrands
 			REX::ERROR("strand: no BSShaderResourceManager");
 			return false;
 		}
-		auto* created = reinterpret_cast<RE::BSTriShape*>(manager->CreateDynamicTriShape(settings.strandDynamicFlags, kTriangles, indices.data(), kVertices,
-			positions.data(), uvs.data(), nullptr, normals.data(), nullptr, nullptr, colors.data(), nullptr, nullptr, nullptr, nullptr, nullptr));
+		auto* created = CreateDynamicTriShape(manager, settings.strandDynamicFlags, kTriangles, indices.data(), kVertices,
+			positions.data(), uvs.data(), nullptr, normals.data(), nullptr, nullptr, colors.data(), nullptr, nullptr, nullptr, nullptr, nullptr);
 		if (!created) {
 			REX::ERROR("strand: CreateDynamicTriShape returned nothing");
 			return false;
@@ -146,6 +166,76 @@ namespace FourStrands
 					REX::INFO("strand: dynamic vertex data at +{:X} ({}), stride {}", offset, static_cast<void*>(candidate), stride);
 					return true;
 				}
+			}
+		}
+		// Run 2 found pointers at +180 and +190, neither starting with the positions. Dump what they and the vertex
+		// buffer hold, and look for the first position anywhere in their first 4 KB, as floats or half floats.
+		const auto dump = [&](const char* a_label, const std::byte* a_address) {
+			std::array<float, 12> floats{};
+			if (!Skin::SafeRead(a_address, floats)) {
+				REX::INFO("strand: {} {} unreadable", a_label, static_cast<const void*>(a_address));
+				return 0uz;
+			}
+			std::string text;
+			for (const auto value : floats) {
+				text += std::format(" {:.3g}", value);
+			}
+			REX::INFO("strand: {} {} starts with floats{}", a_label, static_cast<const void*>(a_address), text);
+
+			std::array<std::byte, 4096> block{};
+			if (!Skin::SafeCopy(block.data(), a_address, block.size())) {
+				return 0uz;
+			}
+			const auto leadingZeros = static_cast<std::size_t>(
+				std::ranges::find_if(block, [](std::byte a_byte) { return a_byte != std::byte{ 0 }; }) - block.begin());
+			REX::INFO("strand:   {} leading zero bytes", leadingZeros);
+			const std::uint16_t half[3]{ 0x3800, 0x4700, 0xC200 };  // 0.5, 7, -3
+			for (std::size_t at = 0; at + sizeof(RE::NiPoint3) <= block.size(); at += 2) {
+				if (std::memcmp(block.data() + at, &a_positions[0], sizeof(RE::NiPoint3)) == 0) {
+					REX::INFO("strand:   first position found at +{:X} as floats", at);
+				}
+				if (std::memcmp(block.data() + at, half, sizeof(half)) == 0) {
+					REX::INFO("strand:   first position found at +{:X} as half floats", at);
+				}
+			}
+			return leadingZeros;
+		};
+		// Run 3: the creation positions only reach the vertex buffer (as half floats), and +190 points at zeroed memory:
+		// likely the per-frame float4 positions, left unfilled. Take a field only if its zeroed run fits all the vertices.
+		std::size_t zeroedField = 0;
+		for (auto offset = kScanFrom; offset < kScanTo; offset += sizeof(void*)) {
+			std::uintptr_t value = 0;
+			if (Skin::SafeRead(bytes + offset, value) && value > 0x10000 && value < 0x7FFF'FFFF'FFFF && value % 8 == 0) {
+				const auto zeros = dump(std::format("field +{:X} ->", offset).c_str(), reinterpret_cast<const std::byte*>(value));
+				if (!zeroedField && zeros >= kVertices * 16) {
+					zeroedField = offset;
+				}
+			}
+		}
+		RE::BSGraphics::TriShape     triShape{};
+		RE::BSGraphics::VertexBuffer buffer{};
+		if (Skin::SafeRead(shape->rendererData, triShape) && Skin::SafeRead(triShape.vertexBuffer, buffer)) {
+			REX::INFO("strand: renderer data desc {:016X}, vertex buffer CPU copy {} ({} bytes)", triShape.vertexDesc.desc, buffer.data, buffer.dataSize);
+			if (buffer.data) {
+				dump("vertex buffer CPU copy", static_cast<const std::byte*>(buffer.data));
+			}
+		}
+
+		const auto& settings = Settings::Get();
+		if (!settings.strandDynamicOffset && zeroedField) {
+			Skin::SafeRead(bytes + zeroedField, dynamicData);
+			dynamicStride = 16;
+			REX::WARN("strand: guessing the zeroed block at +{:X} ({}) holds float4 positions, stride 16", zeroedField, static_cast<void*>(dynamicData));
+			return true;
+		}
+		if (settings.strandDynamicOffset) {
+			std::byte* forced = nullptr;
+			if (Skin::SafeRead(bytes + settings.strandDynamicOffset, forced) && forced) {
+				dynamicData = forced;
+				dynamicStride = settings.strandDynamicStride;
+				REX::WARN("strand: using StrandDynamicOffset +{:X} ({}), stride {} from the INI", settings.strandDynamicOffset, static_cast<void*>(forced),
+					dynamicStride);
+				return true;
 			}
 		}
 		REX::ERROR("strand: no field points at the vertex positions; BSDynamicTriShape's layout is unknown, the strand stays off");

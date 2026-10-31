@@ -15,6 +15,8 @@ namespace FourStrands::Settings
 		std::string   strandBoneB{ "RArm_Hand" };
 		float         strandRadius{ 0.4f };
 		std::uint32_t strandDynamicFlags{ 0 };
+		std::uint32_t strandDynamicOffset{ 0 };  // 0: find it; otherwise use this field of BSDynamicTriShape
+		std::uint32_t strandDynamicStride{ 16 };
 	};
 
 	const Values& Get();

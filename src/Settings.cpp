@@ -47,6 +47,10 @@ namespace FourStrands::Settings
 					values.strandRadius = std::stof(a_value);
 				} else if (is("Spike", "StrandDynamicFlags")) {
 					values.strandDynamicFlags = static_cast<std::uint32_t>(std::stoul(a_value, nullptr, 0));
+				} else if (is("Spike", "StrandDynamicOffset")) {
+					values.strandDynamicOffset = static_cast<std::uint32_t>(std::stoul(a_value, nullptr, 0));
+				} else if (is("Spike", "StrandDynamicStride")) {
+					values.strandDynamicStride = static_cast<std::uint32_t>(std::stoul(a_value, nullptr, 0));
 				}
 			} catch (const std::exception&) {
 				REX::WARN("4Strands.ini: bad value for [{}] {}: {}", a_section, a_key, a_value);

@@ -55,6 +55,8 @@ namespace FourStrands::BodyProbe
 		struct Bones
 		{
 			std::vector<RE::NiAVObject*>    nodes;
+			std::vector<RE::NiTransform*>   worldTransforms;
+			std::vector<std::optional<RE::NiTransform>> world;  // from worldTransforms: most entries in nodes are null
 			std::vector<Skin::BoneTransform> skinToBone;
 		};
 
@@ -79,16 +81,34 @@ namespace FourStrands::BodyProbe
 			Bones bones;
 			bones.nodes.resize(instance.bones.size);
 			bones.skinToBone.resize(instance.bones.size);
+			if (instance.worldTransforms.size == instance.bones.size) {
+				bones.worldTransforms.resize(instance.bones.size);
+				if (!Skin::SafeCopy(bones.worldTransforms.data(), instance.worldTransforms.data, bones.worldTransforms.size() * sizeof(RE::NiTransform*))) {
+					bones.worldTransforms.clear();
+				}
+			}
 			if (!Skin::SafeCopy(bones.nodes.data(), instance.bones.data, bones.nodes.size() * sizeof(RE::NiAVObject*)) ||
 				!Skin::SafeCopy(bones.skinToBone.data(), boneData.transforms.data, bones.skinToBone.size() * sizeof(Skin::BoneTransform))) {
 				REX::WARN("    bone arrays unreadable");
 				return std::nullopt;
 			}
-			std::string names;
-			for (std::size_t i = 0; i < bones.nodes.size() && i < 12; ++i) {
-				names += std::format("{}{}", i ? ", " : "", NameOf(bones.nodes[i]));
+			bones.world.resize(bones.nodes.size());
+			for (std::size_t i = 0; i < bones.world.size(); ++i) {
+				RE::NiTransform transform{};
+				if (i < bones.worldTransforms.size() && Skin::SafeRead(bones.worldTransforms[i], transform)) {
+					bones.world[i] = transform;
+				}
 			}
-			REX::INFO("    first bones: {}{}", names, bones.nodes.size() > 12 ? ", ..." : "");
+			for (std::size_t i = 0; i < bones.nodes.size() && i < 6; ++i) {
+				auto* bone = bones.nodes[i];
+				auto* worldTransform = i < bones.worldTransforms.size() ? bones.worldTransforms[i] : nullptr;
+				RE::NiTransform world{};
+				const bool hasWorld = Skin::SafeRead(worldTransform, world);
+				REX::INFO("    bone {}: {} {} '{}' at {}; world transform {} {} ({}); skin-to-bone translate {}", i, static_cast<void*>(bone),
+					bone ? TypeOf(bone) : "-", NameOf(bone), bone ? Format(bone->world.translate) : "-", static_cast<void*>(worldTransform),
+					hasWorld ? Format(world.translate) : "-", worldTransform == (bone ? &bone->world : nullptr) ? "is the bone's world" : "separate",
+					Format(bones.skinToBone[i].skinToBone.translate));
+			}
 			return bones;
 		}
 
@@ -97,6 +117,7 @@ namespace FourStrands::BodyProbe
 			RE::NiPoint3  position;
 			float         weights[4]{};
 			std::uint8_t  bones[4]{};
+			std::uint8_t  skinRaw[12]{};
 		};
 
 		std::optional<SampledVertex> ReadVertex(const std::byte* a_data, std::uint32_t a_stride, RE::BSGraphics::VertexDesc a_desc, std::uint32_t a_index)
@@ -119,6 +140,7 @@ namespace FourStrands::BodyProbe
 				std::uint16_t half[4];
 				std::memcpy(half, bytes.data() + skinAt, sizeof(half));
 				std::memcpy(vertex.bones, bytes.data() + skinAt + sizeof(half), sizeof(vertex.bones));
+				std::memcpy(vertex.skinRaw, bytes.data() + skinAt, sizeof(vertex.skinRaw));
 				for (int i = 0; i < 4; ++i) {
 					vertex.weights[i] = Skin::HalfToFloat(half[i]);
 				}
@@ -163,19 +185,17 @@ namespace FourStrands::BodyProbe
 					REX::WARN("    vertex {} unreadable", index);
 					continue;
 				}
-				RE::NiPoint3 world{};
-				float        total = 0.0f;
-				int          main = -1;
+				std::string raw;
+				for (const auto byte : vertex->skinRaw) {
+					raw += std::format("{:02X} ", byte);
+				}
+				REX::INFO("    vertex {} skinning bytes: {}(weights {:.3f} {:.3f} {:.3f} {:.3f} as half floats)", index, raw, vertex->weights[0],
+					vertex->weights[1], vertex->weights[2], vertex->weights[3]);
+				int main = -1;
 				for (int i = 0; i < 4; ++i) {
 					const auto bone = vertex->bones[i];
-					const auto weight = vertex->weights[i];
-					if (weight <= 0.0f || bone >= a_bones.nodes.size() || !a_bones.nodes[bone]) {
-						continue;
-					}
-					const auto& boneWorld = a_bones.nodes[bone]->world;
-					world += (boneWorld * (a_bones.skinToBone[bone].skinToBone * vertex->position)) * weight;
-					total += weight;
-					if (main < 0 || weight > vertex->weights[main]) {
+					if (vertex->weights[i] > 0.0f && bone < a_bones.world.size() && a_bones.world[bone] &&
+						(main < 0 || vertex->weights[i] > vertex->weights[main])) {
 						main = i;
 					}
 				}
@@ -184,10 +204,85 @@ namespace FourStrands::BodyProbe
 						vertex->bones[0], vertex->bones[1], vertex->bones[2], vertex->bones[3]);
 					continue;
 				}
-				const auto* mainBone = a_bones.nodes[vertex->bones[main]];
-				REX::INFO("    vertex {}: local {} -> world {} (weights sum {:.2f}); main bone {} ({:.2f}) at {}, {:.1f} units away",
-					index, Format(vertex->position), Format(world), total, NameOf(mainBone), vertex->weights[main],
-					Format(mainBone->world.translate), (world - mainBone->world.translate).Length());
+				const auto mainIndex = vertex->bones[main];
+				const auto mainAt = a_bones.world[mainIndex]->translate;
+				REX::INFO("    vertex {}: local {}, main bone {} '{}' ({:.2f}) at {}; rigid through the geometry's world: {:.1f} units away",
+					index, Format(vertex->position), mainIndex, NameOf(a_bones.nodes[mainIndex]), vertex->weights[main], Format(mainAt),
+					((a_geometry->world * vertex->position) - mainAt).Length());
+
+				// Run 3's vertices landed 25-107 units from their bones, so try the conventions side by side. The right one
+				// puts the vertex a few units from its main bone in bone space, and in world space.
+				const std::pair<const char*, RE::NiTransform (*)(const RE::NiTransform&)> conventions[]{
+					{ "skin-to-bone", [](const RE::NiTransform& a_t) { return a_t; } },
+					{ "transposed", [](const RE::NiTransform& a_t) { return RE::NiTransform(a_t.rotate.Transpose(), a_t.translate, a_t.scale); } },
+					{ "inverted", [](const RE::NiTransform& a_t) { return a_t.Invert(); } },
+				};
+				for (const auto& [label, convert] : conventions) {
+					RE::NiPoint3 world{};
+					for (int i = 0; i < 4; ++i) {
+						const auto bone = vertex->bones[i];
+						if (vertex->weights[i] > 0.0f && bone < a_bones.world.size() && a_bones.world[bone]) {
+							world += (*a_bones.world[bone] * (convert(a_bones.skinToBone[bone].skinToBone) * vertex->position)) * vertex->weights[i];
+						}
+					}
+					const auto boneSpace = convert(a_bones.skinToBone[mainIndex].skinToBone) * vertex->position;
+					REX::INFO("      {}: {:.1f} from the bone in bone space, world {} {:.1f} away", label, boneSpace.Length(), Format(world),
+						(world - mainAt).Length());
+				}
+			}
+		}
+	}
+
+	namespace
+	{
+		// The spike's own BSDynamicTriShape gets no per-frame vertex buffer. Head parts are BSDynamicTriShapes the engine
+		// made itself. Run 5 showed +170 holds vertices x 12 (float3 positions), so read each pointer field as that many
+		// float3s and see which one looks like a head: all finite, and within a few hundred units of the origin.
+		void ProbeDynamic(RE::BSGeometry* a_geometry)
+		{
+			auto* shape = a_geometry->IsTriShape();
+			if (!shape) {
+				return;
+			}
+			const auto* bytes = reinterpret_cast<const std::byte*>(shape);
+			std::string fields;
+			for (std::size_t offset = 0x170; offset < 0x1C0; offset += 8) {
+				std::uint64_t value = 0;
+				Skin::SafeRead(bytes + offset, value);
+				fields += std::format(" {:X}={:X}", offset, value);
+			}
+			std::uint32_t dataSize = 0;
+			Skin::SafeRead(bytes + 0x170, dataSize);
+			REX::INFO("  dynamic '{}': {} vertices, +170 = {} ({} per vertex); fields{}", NameOf(a_geometry), shape->numVertices, dataSize,
+				shape->numVertices ? static_cast<float>(dataSize) / shape->numVertices : 0.0f, fields);
+
+			const std::size_t count = std::min<std::size_t>(shape->numVertices, 4096);
+			std::vector<RE::NiPoint3> points(count);
+			for (std::size_t offset = 0x170; offset < 0x1C0; offset += 8) {
+				std::uintptr_t value = 0;
+				if (!Skin::SafeRead(bytes + offset, value) || value < 0x10000 || value > 0x7FFF'FFFF'FFFF || value % 8) {
+					continue;
+				}
+				if (!Skin::SafeCopy(points.data(), reinterpret_cast<const void*>(value), points.size() * sizeof(RE::NiPoint3))) {
+					REX::INFO("    field +{:X}: {} float3s unreadable", offset, count);
+					continue;
+				}
+				std::size_t  plausible = 0;
+				std::size_t  zero = 0;
+				RE::NiPoint3 low{ FLT_MAX, FLT_MAX, FLT_MAX };
+				RE::NiPoint3 high{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
+				for (const auto& point : points) {
+					if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z) || std::abs(point.x) > 500.0f ||
+						std::abs(point.y) > 500.0f || std::abs(point.z) > 500.0f) {
+						continue;
+					}
+					++plausible;
+					zero += point == RE::NiPoint3{};
+					low = { std::min(low.x, point.x), std::min(low.y, point.y), std::min(low.z, point.z) };
+					high = { std::max(high.x, point.x), std::max(high.y, point.y), std::max(high.z, point.z) };
+				}
+				REX::INFO("    field +{:X} as {} float3s: {} plausible ({} zero), box {} to {}, first {}", offset, count, plausible, zero,
+					plausible ? Format(low) : "-", plausible ? Format(high) : "-", Format(points[0]));
 			}
 		}
 	}
@@ -224,6 +319,12 @@ namespace FourStrands::BodyProbe
 		REX::INFO("  sampling '{}':", NameOf(largest));
 		if (const auto bones = ReadBones(largest)) {
 			SampleVertices(largest, *bones);
+		}
+		int dynamicCount = 0;
+		for (auto* geometry : skinned) {
+			if (geometry->IsDynamicTriShape() && dynamicCount++ < 3) {
+				ProbeDynamic(geometry);
+			}
 		}
 	}
 }

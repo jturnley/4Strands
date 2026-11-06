@@ -1,0 +1,10 @@
+build/
+.xmake/
+vsxmake*/
+.vs/
+CMakeUserPresets.json
+dist/
+build.log
+
+# Local copy of the 4Stim beta; not for redistribution
+4Stim Beta 4/

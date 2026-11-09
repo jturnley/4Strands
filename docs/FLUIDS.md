@@ -48,6 +48,10 @@ The urethra makes two kinds of jet:
   particles. A flood is 3 to 5 fading pulses, up to 500 particles a second at 3.5 m/s.
 - **`Urinate(seconds)`** is one steady stream.
 
+**Whether she squirts (`SquirtOdds`):** her climax only has a chance of a squirt. Each woman has her own chance.
+Every climax without a squirt takes a fifth of that chance away: a 50% woman goes 50%, 40, 30, 20, 10%, then 0. So
+after five climaxes without one, she won't squirt in that scene. A squirt leaves her chance where it is.
+
 ### Wetness
 
 `Wetness` keeps how wet each skin patch is, from 0 to 1. Fluid touching a patch wets it at its kind's rate, and the

@@ -116,6 +116,21 @@ namespace FourStrands::Fluid
 		}
 	}
 
+	float SquirtOdds::Chance() const
+	{
+		return std::clamp(_chance, 0.0f, 1.0f) * std::max(0.0f, 1.0f - 0.2f * static_cast<float>(_misses));
+	}
+
+	bool SquirtOdds::Roll(std::mt19937& a_random)
+	{
+		const float chance = Chance();
+		if (chance > 0.0f && std::uniform_real_distribution<float>(0.0f, 1.0f)(a_random) < chance) {
+			return true;
+		}
+		++_misses;
+		return false;
+	}
+
 	void Wetness::Step(float a_seconds, std::span<const Particle> a_particles, std::size_t a_capsules, std::size_t a_patches)
 	{
 		if (_wet.size() != a_patches) {

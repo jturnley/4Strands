@@ -221,6 +221,38 @@ int main()
 		Check(after + 5 >= inside && after + 1 <= inside, "behind the closed os it drips out, about 3 in 10 s");
 	}
 
+	std::printf("squirt odds\n");
+	{
+		std::mt19937 random(11);
+		SquirtOdds   unlucky(0.0001f);
+		for (int i = 0; i < 10; ++i) {
+			unlucky.Roll(random);
+		}
+		Check(unlucky.Chance() == 0.0f && unlucky.Misses() >= 5, "after five climaxes without a squirt, no more chance");
+		SquirtOdds sure(1.0f);
+		bool       always = true;
+		for (int i = 0; i < 20; ++i) {
+			always = always && sure.Roll(random);
+		}
+		Check(always && sure.Chance() == 1.0f, "a squirt keeps her chance");
+		// many women at 50%: at which climax each first squirts
+		int squirtedAt[7] = {};
+		for (int w = 0; w < 20000; ++w) {
+			SquirtOdds woman(0.5f);
+			for (int c = 1; c <= 6; ++c) {
+				if (woman.Roll(random)) {
+					++squirtedAt[c];
+					break;
+				}
+			}
+		}
+		std::printf("  20000 women at 50%%, first squirt at climax 1-6: %d %d %d %d %d %d\n", squirtedAt[1], squirtedAt[2],
+			squirtedAt[3], squirtedAt[4], squirtedAt[5], squirtedAt[6]);
+		// expected 10000, 4000, 1800, 840, 336, 0 (e.g. the 2nd: 0.5 x 0.4 x 20000)
+		Check(squirtedAt[6] == 0 && squirtedAt[1] > 9700 && squirtedAt[1] < 10300 && squirtedAt[2] > 3800 && squirtedAt[2] < 4200,
+			"50%, then 40, 30, 20, 10% after each miss, then none");
+	}
+
 	std::printf("%s\n", failures ? "SOME CHECKS FAILED" : "all checks passed");
 	return failures ? 1 : 0;
 }

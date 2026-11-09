@@ -55,6 +55,23 @@ namespace FourStrands::Fluid
 		float              _due{ 0.0f };
 	};
 
+	// Whether her climax brings a squirt. Each woman has her own chance (`a_chance`, 0-1). Every climax without one
+	// takes a fifth of it away, so after five climaxes without a squirt she won't squirt in this scene; a squirt leaves
+	// the chance where it is
+	class SquirtOdds
+	{
+	public:
+		explicit SquirtOdds(float a_chance = 0.5f) : _chance(a_chance) {}
+
+		bool  Roll(std::mt19937& a_random);
+		float Chance() const;
+		int   Misses() const { return _misses; }
+
+	private:
+		float _chance;
+		int   _misses{ 0 };
+	};
+
 	// How wet each skin patch is (0-1): fluid touching it wets it at its kind's rate, and it dries over its kind's fade.
 	// For drawing: wet skin is drawn glossier. The patches are Skin::Patches(), whose count may change (it then restarts)
 	class Wetness

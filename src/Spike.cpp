@@ -1,6 +1,7 @@
 #include "Spike.h"
 
 #include "BodyProbe.h"
+#include "Fluids.h"
 #include "FrameHook.h"
 #include "Settings.h"
 #include "SpikeStrand.h"
@@ -22,6 +23,7 @@ namespace FourStrands::Spike
 
 		void OnFrame(RE::PlayerCharacter* a_player, float a_delta)
 		{
+			Fluids::Tick(a_delta);
 			if (!a_player->Get3D()) {
 				settled = 0.0f;
 				return;

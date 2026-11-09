@@ -7,6 +7,13 @@ namespace FourStrands::Settings
 		bool enabled{ true };
 		bool debugLog{ false };
 
+		// [Fluids] the scene's fluids in SoftBody FO4's canals (logged; not drawn yet)
+		bool          fluids{ true };
+		float         fluidWetness{ 1.0f };       // × each woman's own wetness (0.25-1)
+		float         fluidSquirtChance{ 0.35f }; // the average woman's chance her climax brings a squirt
+		std::uint32_t fluidMaxParticles{ 3000 };
+		float         fluidPenisRadius{ 1.6f };   // game units: his shaft, as it pushes fluid
+
 		// [Spike] Phase 0 checks: read body vertex data, and draw one strand mesh.
 		bool          probeBody{ true };
 		bool          strand{ true };

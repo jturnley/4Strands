@@ -1,6 +1,7 @@
 #include "FourStimBridge.h"
 
 #include "PluginInterface.h"
+#include "Fluids.h"
 #include "Spike.h"
 
 namespace FourStrands::FourStimBridge
@@ -43,6 +44,7 @@ namespace FourStrands::FourStimBridge
 				for (std::uint32_t i = 0; i < a_thread->getActorCount(); ++i) {
 					Spike::QueueProbe(ActorOf(a_thread->getActor(i)));
 				}
+				Fluids::OnThreadStarted(a_thread->getThreadID());
 			}
 		};
 
@@ -68,6 +70,7 @@ namespace FourStrands::FourStimBridge
 			void listen(FourStimAPI::Thread* a_thread) override
 			{
 				REX::INFO("4Stim thread {} stopped", a_thread->getThreadID());
+				Fluids::OnThreadStopped(a_thread->getThreadID());
 			}
 		};
 
@@ -76,6 +79,7 @@ namespace FourStrands::FourStimBridge
 			void listen(FourStimAPI::Thread* a_thread, FourStimAPI::ThreadActor* a_actor) override
 			{
 				REX::INFO("4Stim thread {}: {} climaxed in {}", a_thread->getThreadID(), NameOf(ActorOf(a_actor)), a_thread->getCurrentSceneID());
+				Fluids::OnClimax(a_thread->getThreadID(), ActorOf(a_actor));
 			}
 		};
 

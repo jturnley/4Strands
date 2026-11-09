@@ -133,9 +133,48 @@ along the vagina's axis. A version 1 SoftBody leaves the urethra unset.
 - the sources follow their inputs;
 - semen shot through an open os is trapped when it closes and drips out slowly.
 
+## In game (src/Fluids.cpp)
+
+The session follows the 4Stim thread that starts. 4Stim's events arrive on its own threads and are queued, and the
+frame hook (PlayerCharacter::Update) steps the fluid on the main thread, in fixed 1/120 s substeps.
+
+**The frame.** SoftBody reports her vaginal entrance the first time, and that becomes the solver's origin. Metres are
+game units × 0.0142875, with z up. The ground is set under her feet.
+
+**Who she is.** She is the woman SoftBody follows. Her form ID gives her her own traits:
+- **Wetness:** 0.25-1, × `Wetness` in the INI.
+- **Squirt chance:** `SquirtChance` × 0.4-1.6.
+- **Squirt volume:** a fresh `DrawVolume` for each encounter.
+
+**Every frame:**
+- **Her canals:** SoftBody's canal goes through `BuildCanals`, with the mood:
+  - **uptake and squeeze:** her `Contractions`, also sent to `SetCanalSqueeze`;
+  - **agitation:** her vaginal entrance's acceleration ÷ 20 m/s², smoothed.
+- **His shaft:** `Penis_01_SMP` to 0.75 units past `Penis_05_SMP`, `PenisRadius` thick, its velocity from the last
+  frame.
+- **Secretion:** by 4Stim's excitement ÷ 100.
+- **The urethra:** her squirt flows from the point SoftBody reports.
+
+**Her climax:**
+- **Contractions:** at a strength of 0.7-1.
+- **A squirt:** if `SquirtOdds` rolls one and the gland isn't empty, at a strength of 0.2-1.
+
+**His climax** (whoever has A-Body's penis):
+- **Spurts:** 4 to 7, 0.6 s apart, 3.5 ml in all, weaker as they go.
+- **At his tip:** they leave his tip into the canal link it's in (at 0.9 m/s) or out into the air (at 2.5 m/s).
+- **The os:** into her vagina, it opens for 2 s (`SetOsOpen` 0.35 units).
+
+**Every second:** `Absorb` (10-minute grace, then 1/600 a second), and the uterus's count goes to `SetUterusFill`.
+
+**The log.** Every 2 s:
+- the particles in the vagina, os, uterus and anal canal, and outside her;
+- the count of each kind, foam included;
+- arousal, agitation and squeeze;
+- whether his shaft is in her.
+
 ## Next, in game
 
-1. **A fluid session per 4Stim thread:**
+1. **Done:** the fluid session (above). **Was:** a fluid session per 4Stim thread:
    - **every frame:** read SoftBody, build the canals, and step the solver;
    - **arousal:** `getExcitement()` drives secretion;
    - **her climax:** a squirt, with a chance and strength per woman;

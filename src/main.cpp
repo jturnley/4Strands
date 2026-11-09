@@ -1,3 +1,4 @@
+#include "Fluids.h"
 #include "FourStimBridge.h"
 #include "Settings.h"
 #include "Spike.h"
@@ -13,6 +14,7 @@ namespace
 		case F4SE::MessagingInterface::kPreLoadGame:
 			// TODO: reset strands, fluids and per-actor state.
 			FourStrands::Spike::OnPreLoadGame();
+			FourStrands::Fluids::Reset();
 			break;
 		case F4SE::MessagingInterface::kPostLoadGame:
 		case F4SE::MessagingInterface::kNewGame:

@@ -37,6 +37,16 @@ namespace FourStrands::Fluid
 		void Stop();
 		bool Active() const { return _left > 0.0f; }
 
+		// How much she can squirt this encounter (millilitres): set at its start. Each squirt particle spends a
+		// particle's volume (spacing³); once it is spent the gland is empty and squirts stop, until the next encounter.
+		// Urine doesn't draw on it
+		void  Fill(float a_millilitres) { _skene = std::max(0.0f, a_millilitres); }
+		float Remaining() const { return _skene; }
+
+		// A realistic amount for one encounter: reported squirting volumes run from about 10 ml to 150 ml, most of them
+		// tens of millilitres. Log-normal round a median of 40 ml, within 10-150
+		static float DrawVolume(std::mt19937& a_random);
+
 		// a_direction: out of her, along the urethra's opening
 		void Step(float a_seconds, Vec3 a_position, Vec3 a_direction, float a_spacing, std::mt19937& a_random, std::vector<Particle>& a_out);
 
@@ -53,6 +63,7 @@ namespace FourStrands::Fluid
 		float              _time{ 0.0f };
 		float              _left{ 0.0f };
 		float              _due{ 0.0f };
+		float              _skene{ 0.0f };  // millilitres left to squirt this encounter
 	};
 
 	// Whether her climax brings a squirt. Each woman has her own chance (`a_chance`, 0-1). Every climax without one

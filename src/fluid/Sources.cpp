@@ -72,6 +72,12 @@ namespace FourStrands::Fluid
 		_left = std::max(0.0f, a_seconds);
 	}
 
+	float Urethra::DrawVolume(std::mt19937& a_random)
+	{
+		std::lognormal_distribution<float> volume(std::log(40.0f), 0.6f);
+		return std::clamp(volume(a_random), 10.0f, 150.0f);
+	}
+
 	void Urethra::Stop()
 	{
 		_pulses.clear();
@@ -93,6 +99,16 @@ namespace FourStrands::Fluid
 		}
 		_time += a_seconds;
 		_left -= a_seconds;
+		// a squirt draws on what the gland holds: the last 10 ml come weaker and weaker, and an empty gland gives nothing
+		const float each = a_spacing * a_spacing * a_spacing * 1.0e6f;  // millilitres a particle
+		if (_kind == Kind::kSkene) {
+			if (_skene < each) {
+				_left = 0.0f;
+				_pulses.clear();
+				return;
+			}
+			strength = std::min(strength, _skene / 10.0f);
+		}
 		if (strength <= 0.0f) {
 			return;
 		}
@@ -105,6 +121,12 @@ namespace FourStrands::Fluid
 		std::uniform_real_distribution<float> spread(-1.0f, 1.0f);
 		while (_due >= 1.0f) {
 			_due -= 1.0f;
+			if (_kind == Kind::kSkene) {
+				if (_skene < each) {
+					break;
+				}
+				_skene -= each;
+			}
 			Particle particle;
 			// a spray that widens as it weakens
 			const float wide = 0.08f + 0.25f * (1.0f - strength);

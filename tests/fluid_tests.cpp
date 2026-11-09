@@ -5,6 +5,7 @@
 #include "fluid/Solver.h"
 #include "fluid/Sources.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <random>
 #include <vector>
@@ -148,6 +149,7 @@ int main()
 
 		Urethra               urethra;
 		std::vector<Particle> trickle, flood;
+		urethra.Fill(1000.0f);  // plenty: this checks the jet, not the gland
 		urethra.Squirt(0.05f, random);
 		while (urethra.Active()) {
 			urethra.Step(kStep, { 0, 0, 0 }, { 0, -1, -1 }, kSpacing, random, trickle);
@@ -251,6 +253,38 @@ int main()
 		// expected 10000, 4000, 1800, 840, 336, 0 (e.g. the 2nd: 0.5 x 0.4 x 20000)
 		Check(squirtedAt[6] == 0 && squirtedAt[1] > 9700 && squirtedAt[1] < 10300 && squirtedAt[2] > 3800 && squirtedAt[2] < 4200,
 			"50%, then 40, 30, 20, 10% after each miss, then none");
+	}
+
+	std::printf("squirt volume\n");
+	{
+		std::mt19937       random(5);
+		std::vector<float> volumes;
+		for (int i = 0; i < 10000; ++i) {
+			volumes.push_back(Urethra::DrawVolume(random));
+		}
+		std::sort(volumes.begin(), volumes.end());
+		std::printf("  10000 encounters: least %.0f ml, median %.0f, 90%% under %.0f, most %.0f\n", volumes.front(), volumes[5000],
+			volumes[9000], volumes.back());
+		Check(volumes.front() >= 10.0f && volumes.back() <= 150.0f && volumes[5000] > 36.0f && volumes[5000] < 44.0f,
+			"a realistic volume per encounter: 10-150 ml, median 40");
+		// a 20 ml gland, flooded again and again: it gives about 20 ml in all, then nothing
+		Urethra urethra;
+		urethra.Fill(20.0f);
+		const float           each = kSpacing * kSpacing * kSpacing * 1.0e6f;
+		std::vector<Particle> out;
+		std::size_t           perSquirt[4]{};
+		for (int s = 0; s < 4; ++s) {
+			const auto before = out.size();
+			urethra.Squirt(1.0f, random);
+			while (urethra.Active()) {
+				urethra.Step(kStep, { 0, 0, 0 }, { 0, -1, -1 }, kSpacing, random, out);
+			}
+			perSquirt[s] = out.size() - before;
+		}
+		std::printf("  a 20 ml gland, four floods: %zu, %zu, %zu, %zu particles (%.0f ml in all, %.1f left)\n", perSquirt[0], perSquirt[1],
+			perSquirt[2], perSquirt[3], out.size() * each, urethra.Remaining());
+		Check(out.size() * each <= 20.0f + each && out.size() * each > 19.0f, "it squirts what the gland holds, no more");
+		Check(perSquirt[3] == 0, "an empty gland gives nothing");
 	}
 
 	std::printf("%s\n", failures ? "SOME CHECKS FAILED" : "all checks passed");

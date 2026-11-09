@@ -52,6 +52,12 @@ The urethra makes two kinds of jet:
 Every climax without a squirt takes a fifth of that chance away: a 50% woman goes 50%, 40, 30, 20, 10%, then 0. So
 after five climaxes without one, she won't squirt in that scene. A squirt leaves her chance where it is.
 
+**How much she can squirt (`Urethra::Fill`, `DrawVolume`):** at the start of each encounter she gets a volume.
+Reported squirting volumes run from about 10 ml to 150 ml, most of them tens of millilitres, so it is drawn log-normal
+round a median of 40 ml, kept within 10-150 ml (90% of encounters under about 86 ml). Each squirt particle spends its
+volume (spacing³, 0.064 ml at 4 mm). The last 10 ml come weaker and weaker, and once the gland is empty she won't
+squirt again until the next encounter. Urine doesn't draw on it.
+
 ### Wetness
 
 `Wetness` keeps how wet each skin patch is, from 0 to 1. Fluid touching a patch wets it at its kind's rate, and the

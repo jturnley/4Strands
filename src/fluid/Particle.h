@@ -53,5 +53,7 @@ namespace FourStrands::Fluid
 		bool          bulk{};
 		bool          asleep{};
 		bool          touching{};
+		std::uint8_t  kind{};          // Fluid::Kind
+		std::int16_t  canal{ -1 };     // the canal (Colliders::canals) it is inside, or -1
 	};
 }

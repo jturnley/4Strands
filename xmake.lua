@@ -21,6 +21,13 @@ target("FourStrandsFluid")
     add_headerfiles("src/fluid/*.h")
     add_includedirs("src", { public = true })
 
+-- offline checks of the fluid kinds, canals and sources: xmake build FluidTests && xmake run FluidTests
+target("FluidTests")
+    set_kind("binary")
+    set_default(false)
+    add_files("tests/fluid_tests.cpp")
+    add_deps("FourStrandsFluid")
+
 target("4Strands")
     add_rules("commonlibf4.plugin", {
         name = "4Strands",
@@ -30,6 +37,6 @@ target("4Strands")
 
     add_deps("FourStrandsFluid")
     add_files("src/*.cpp")
-    add_headerfiles("src/*.h", "extern/4stim/*.h")
-    add_includedirs("src", "extern/4stim")
+    add_headerfiles("src/*.h", "extern/4stim/*.h", "extern/softbodyfo4/*.h")
+    add_includedirs("src", "extern/4stim", "extern/softbodyfo4")
     set_pcxxheader("src/PCH.h")

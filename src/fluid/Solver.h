@@ -45,10 +45,30 @@ namespace FourStrands::Fluid
 		float radius{};
 	};
 
+	// The inside of an opening, as a chain of tapered capsules from its entrance inward (the vagina's rings, the os,
+	// the uterus). A particle in one is held inside its radius; at its ends it passes to the neighbouring one, leaves
+	// through an open entrance, or stops at a closed end. Through `previous` it may only go back out of a canal whose
+	// `seep` is set at that many particles a second (the uterus behind a closed os), so what is inside drips out slowly.
+	// `drag` (per second) is the flow lost along the walls. Rebuilt every frame from SoftBody FO4's canal (its order must
+	// stay the same, since particles keep their canal's index)
+	struct Canal
+	{
+		Vec3  a;                  // the entrance end (toward `previous`, or outside)
+		Vec3  b;                  // the deep end (toward `next`)
+		float radiusA{};
+		float radiusB{};
+		int   previous{ -1 };
+		int   next{ -1 };
+		bool  open{ false };      // with no `previous`: whether `a` lets particles out (and in)
+		float seep{ -1.0f };      // < 0: back out through `a` freely; else that many particles a second
+		float drag{ 0.0f };
+	};
+
 	struct Colliders
 	{
 		std::span<const Capsule> capsules;
 		std::span<const Hole>    holes;
+		std::span<const Canal>   canals;
 		const Skin*              skin{ nullptr };
 	};
 
@@ -80,6 +100,8 @@ namespace FourStrands::Fluid
 		Vec3  Gradient(Vec3 a_delta) const;
 		void  FindNeighbors(std::span<const Particle> a_particles, bool a_all);
 		void  Collide(std::span<const Particle> a_particles, const Colliders& a_colliders, bool a_pull);
+		void  Contain(std::span<const Particle> a_particles, std::span<const Canal> a_canals);
+		void  PassCanals(std::span<Particle> a_particles, std::span<const Canal> a_canals, float a_seconds);
 		static std::optional<Vec3> Carrier(const Colliders& a_colliders, int a_surface, float a_along, Vec3 a_position);
 
 		float                                                _spacing;
@@ -90,6 +112,7 @@ namespace FourStrands::Fluid
 		std::vector<Vec3>                                    _velocity;
 		std::vector<Vec3>                                    _correction;
 		std::vector<float>                                   _lambda;
+		std::vector<float>                                   _seepBudget;  // per canal: particles it may let back out now
 		std::vector<bool>                                    _anchored;
 		std::vector<float>                                   _floor;
 		std::vector<float>                                   _weights;

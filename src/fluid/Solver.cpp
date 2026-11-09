@@ -1,6 +1,7 @@
 #include "fluid/Solver.h"
 
 #include "fluid/Clusters.h"
+#include "fluid/Kinds.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -21,7 +22,6 @@ namespace FourStrands::Fluid
 		constexpr float kSkinGravity = 0.25f;
 		constexpr float kGroundSlide = 0.2f;
 		constexpr float kStickReach = 2.0f;
-		constexpr float kHanging = -0.5f;
 		constexpr float kSeparation = 0.1f;
 		constexpr float kAnchorBreak = 12.0f;
 		constexpr float kAnchorFlow = 15.0f;
@@ -125,11 +125,14 @@ namespace FourStrands::Fluid
 	void Solver::Collide(std::span<const Particle> a_particles, const Colliders& a_colliders, bool a_pull)
 	{
 		const float margin = 0.5f * _spacing;
-		const float reach = margin + kStickReach * _spacing;
 		for (std::size_t i = 0; i < _predicted.size(); ++i) {
-			if (a_particles[i].asleep) {
+			// inside a canal her body's colliders are all round it: only the canal holds it (Contain)
+			if (a_particles[i].asleep || a_particles[i].canal >= 0) {
 				continue;
 			}
+			const auto& kind = Traits(static_cast<Kind>(a_particles[i].kind));
+			const float reach = margin + kStickReach * kind.stickReach * _spacing;
+			const float hanging = kind.hang;
 			Vec3& point = _predicted[i];
 			if (std::ranges::any_of(a_colliders.holes, [&](const Hole& a_hole) { return LengthSquared(point - a_hole.center) < a_hole.radius * a_hole.radius; })) {
 				continue;
@@ -152,7 +155,7 @@ namespace FourStrands::Fluid
 				const Vec3  normal = distance > 1e-7f ? offset * (1.0f / distance) : Vec3{ 0.0f, 0.0f, 1.0f };
 				if (distance < limit) {
 					point = closest + normal * limit;
-				} else if (a_pull && a_particles[i].touching && distance < capsule.radius + reach && normal.z > kHanging) {
+				} else if (a_pull && a_particles[i].touching && distance < capsule.radius + reach && normal.z > hanging) {
 					point = closest + normal * limit;
 				} else {
 					continue;
@@ -172,7 +175,7 @@ namespace FourStrands::Fluid
 				}
 				const auto& patch = patches[k];
 				const float depth = Dot(point - patch.position, patch.normal);
-				const bool  pulled = a_pull && a_particles[i].touching && depth < reach && patch.normal.z > kHanging;
+				const bool  pulled = a_pull && a_particles[i].touching && depth < reach && patch.normal.z > hanging;
 				if (depth >= margin && !pulled) {
 					break;
 				}
@@ -180,6 +183,104 @@ namespace FourStrands::Fluid
 				_contact[i] = static_cast<int>(a_colliders.capsules.size() + k);
 				_along[i] = 0.0f;
 				_normal[i] = patch.normal;
+			}
+		}
+	}
+
+	// Holds each particle that is in a canal inside it: within its tapering radius, and short of any end it may not pass
+	// (a closed deep end, a closed entrance, or the way back out of a canal whose seep allowance is spent)
+	void Solver::Contain(std::span<const Particle> a_particles, std::span<const Canal> a_canals)
+	{
+		const float margin = 0.5f * _spacing;
+		for (std::size_t i = 0; i < _predicted.size(); ++i) {
+			const int c = a_particles[i].canal;
+			if (c < 0 || static_cast<std::size_t>(c) >= a_canals.size()) {
+				continue;
+			}
+			const auto  index = static_cast<std::size_t>(c);
+			const auto& canal = a_canals[index];
+			const Vec3  span = canal.b - canal.a;
+			const float length2 = LengthSquared(span);
+			if (length2 < 1e-10f) {
+				continue;
+			}
+			const float length = std::sqrt(length2);
+			Vec3&       point = _predicted[i];
+			const float t = Dot(point - canal.a, span) / length2;
+			const bool  outA = canal.previous >= 0 ?
+			                       (canal.seep < 0.0f || (index < _seepBudget.size() && _seepBudget[index] >= 1.0f)) :
+			                       canal.open;
+			const float lo = outA ? -1e9f : std::min(0.5f, margin / length);
+			const float hi = canal.next >= 0 ? 1e9f : std::max(0.5f, 1.0f - margin / length);
+			const float held = std::clamp(t, lo, hi);
+			const float inside = std::clamp(held, 0.0f, 1.0f);
+			const Vec3  axis = canal.a + span * held;
+			Vec3        radial = point - axis;
+			if (held == inside) {  // between its ends: within the wall
+				const float radius = std::max(0.25f * _spacing, canal.radiusA + (canal.radiusB - canal.radiusA) * inside - margin);
+				const float distance = Length(radial);
+				if (distance > radius) {
+					radial = radial * (radius / distance);
+				}
+			}
+			point = axis + radial;
+		}
+	}
+
+	// At the end of a step: particles past a canal's end move into the next one, back into the previous one (spending
+	// the seep allowance where there is one), or out through an open entrance; free ones that cross an open entrance
+	// inward join its canal
+	void Solver::PassCanals(std::span<Particle> a_particles, std::span<const Canal> a_canals, float a_seconds)
+	{
+		_seepBudget.resize(a_canals.size(), 0.0f);
+		for (std::size_t c = 0; c < a_canals.size(); ++c) {
+			if (a_canals[c].seep >= 0.0f) {
+				_seepBudget[c] = std::min(2.0f, _seepBudget[c] + a_canals[c].seep * a_seconds);
+			}
+		}
+		for (std::size_t i = 0; i < a_particles.size(); ++i) {
+			auto&     particle = a_particles[i];
+			const int c = particle.canal;
+			if (c >= 0 && static_cast<std::size_t>(c) < a_canals.size()) {
+				const auto  index = static_cast<std::size_t>(c);
+				const auto& canal = a_canals[index];
+				const Vec3  span = canal.b - canal.a;
+				const float length2 = LengthSquared(span);
+				const float t = length2 > 1e-10f ? Dot(_predicted[i] - canal.a, span) / length2 : 0.5f;
+				if (t > 1.0f && canal.next >= 0) {
+					particle.canal = static_cast<std::int16_t>(canal.next);
+				} else if (t < 0.0f && canal.previous >= 0) {
+					if (canal.seep < 0.0f) {
+						particle.canal = static_cast<std::int16_t>(canal.previous);
+					} else if (_seepBudget[index] >= 1.0f) {
+						_seepBudget[index] -= 1.0f;
+						particle.canal = static_cast<std::int16_t>(canal.previous);
+					}
+				} else if (t < 0.0f && canal.open) {
+					particle.canal = -1;
+				}
+				continue;
+			}
+			if (c >= 0) {  // its canal is gone (fewer this frame): let it go
+				particle.canal = -1;
+				continue;
+			}
+			for (std::size_t k = 0; k < a_canals.size(); ++k) {
+				const auto& canal = a_canals[k];
+				if (canal.previous >= 0 || !canal.open) {
+					continue;
+				}
+				const Vec3  span = canal.b - canal.a;
+				const float length2 = LengthSquared(span);
+				if (length2 < 1e-10f) {
+					continue;
+				}
+				const float t = Dot(_predicted[i] - canal.a, span) / length2;
+				const Vec3  radial = _predicted[i] - (canal.a + span * t);
+				if (t >= 0.0f && t <= 0.3f && LengthSquared(radial) < canal.radiusA * canal.radiusA) {
+					particle.canal = static_cast<std::int16_t>(k);
+					break;
+				}
 			}
 		}
 	}
@@ -265,7 +366,10 @@ namespace FourStrands::Fluid
 			for (const auto j : _neighbors[i]) {
 				const auto  delta = a_particles[j].position - a_particles[i].position;
 				const float shared = std::max(0.5f * (_weights[i] + _weights[j]), kCohesionFloor);
-				cohesion += delta * (Weight(delta) / shared);
+				// a pair holds together as the less cohesive of its two kinds does (water barely pulls on anything)
+				const float pair = std::min(Traits(static_cast<Kind>(a_particles[i].kind)).cohesion,
+					Traits(static_cast<Kind>(a_particles[j].kind)).cohesion);
+				cohesion += delta * (Weight(delta) / shared * pair);
 			}
 			cohesion = cohesion * (_parameters.cohesion / _spacing);
 			const auto& particle = a_particles[i];
@@ -358,8 +462,11 @@ namespace FourStrands::Fluid
 					position = position - LimitLength(delta * ((length - anchor.rest) / length * kLinkStiffness), 0.25f * _spacing);
 				}
 			}
+			Contain(a_particles, a_colliders.canals);
 			for (std::size_t i = 0; i < count; ++i) {
-				_predicted[i].z = std::max(_predicted[i].z, _floor[i]);
+				if (a_particles[i].canal < 0) {
+					_predicted[i].z = std::max(_predicted[i].z, _floor[i]);
+				}
 			}
 		}
 
@@ -378,9 +485,13 @@ namespace FourStrands::Fluid
 			}
 		}
 		Collide(a_particles, a_colliders, false);
+		Contain(a_particles, a_colliders.canals);
 		for (std::size_t i = 0; i < count; ++i) {
-			_predicted[i].z = std::max(_predicted[i].z, _floor[i]);
+			if (a_particles[i].canal < 0) {
+				_predicted[i].z = std::max(_predicted[i].z, _floor[i]);
+			}
 		}
+		PassCanals(a_particles, a_colliders.canals, a_seconds);
 
 		const float follow = std::min(1.0f, kAnchorFlow * a_seconds);
 		for (auto& anchor : a_anchors) {
@@ -415,7 +526,6 @@ namespace FourStrands::Fluid
 				_weights[i] += Weight(_predicted[i] - _predicted[j]);
 			}
 		}
-		const float viscosity = 1.0f - std::exp(-_parameters.viscosity * a_seconds);
 		const float friction = std::exp(-kFloorFriction * a_seconds);
 		for (std::size_t i = 0; i < count; ++i) {
 			auto& particle = a_particles[i];
@@ -423,7 +533,9 @@ namespace FourStrands::Fluid
 				particle.velocity = {};
 				continue;
 			}
-			Vec3 smoothing{};
+			const auto& kind = Traits(static_cast<Kind>(particle.kind));
+			const float viscosity = 1.0f - std::exp(-_parameters.viscosity * kind.viscosity * a_seconds);
+			Vec3        smoothing{};
 			for (const auto j : _neighbors[i]) {
 				const float shared = 1.0f + 0.5f * (_weights[i] + (a_particles[j].asleep ? _weights[i] : _weights[j]));
 				smoothing += (_velocity[j] - _velocity[i]) * (Weight(_predicted[i] - _predicted[j]) / shared);
@@ -436,14 +548,17 @@ namespace FourStrands::Fluid
 				const float normal = Dot(relative, _normal[i]);
 				Vec3        sliding = relative - _normal[i] * normal;
 				const float slip = Length(sliding);
-				const float grip = _parameters.grip * a_seconds;
-				sliding = slip > grip ? sliding * ((slip - grip) / slip * std::exp(-_parameters.friction * a_seconds)) : Vec3{};
+				const float grip = _parameters.grip * kind.grip * a_seconds;
+				sliding = slip > grip ? sliding * ((slip - grip) / slip * std::exp(-_parameters.friction * kind.friction * a_seconds)) : Vec3{};
 				velocity = surface + sliding + _normal[i] * std::clamp(normal, 0.0f, kSeparation);
 				particle.carried = surface;
 				particle.surface = _contact[i];
 				particle.along = _along[i];
 			} else {
 				particle.surface = -1;
+			}
+			if (particle.canal >= 0 && static_cast<std::size_t>(particle.canal) < a_colliders.canals.size()) {
+				velocity = velocity * std::exp(-a_colliders.canals[static_cast<std::size_t>(particle.canal)].drag * a_seconds);
 			}
 			if (_predicted[i].z <= _floor[i] + _spacing * 0.01f) {
 				velocity.z = std::max(velocity.z, 0.0f);

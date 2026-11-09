@@ -20,6 +20,7 @@ namespace FourStrands::Fluid
 		float         stretch{ 3.0f };
 		float         friction{ 30.0f };
 		float         grip{ 0.6f };
+		float         liquefy{ 360.0f };  // seconds: semen's thick first gel thins by about two-thirds in this
 	};
 
 	struct Anchor
@@ -37,6 +38,7 @@ namespace FourStrands::Fluid
 		float radius{};
 		Vec3  velocityA;
 		Vec3  velocityB;
+		bool  shaft{ false };  // a penis: it also pushes and drags the fluid inside her canals (the rest skip it there)
 	};
 
 	struct Hole
@@ -61,7 +63,9 @@ namespace FourStrands::Fluid
 		int   next{ -1 };
 		bool  open{ false };      // with no `previous`: whether `a` lets particles out (and in)
 		float seep{ -1.0f };      // < 0: back out through `a` freely; else that many particles a second
+		float inflow{ -1.0f };    // < 0: in from `previous` freely; else that many particles a second (0: shut, a closed os)
 		float drag{ 0.0f };
+		float pull{ 0.0f };       // m/s² along a→b on what is inside (a womb drawing semen in; > 0 inward, < 0 out)
 	};
 
 	struct Colliders
@@ -100,8 +104,10 @@ namespace FourStrands::Fluid
 		Vec3  Gradient(Vec3 a_delta) const;
 		void  FindNeighbors(std::span<const Particle> a_particles, bool a_all);
 		void  Collide(std::span<const Particle> a_particles, const Colliders& a_colliders, bool a_pull);
-		void  Contain(std::span<const Particle> a_particles, std::span<const Canal> a_canals);
-		void  PassCanals(std::span<Particle> a_particles, std::span<const Canal> a_canals, float a_seconds);
+		void  Plugs(const Colliders& a_colliders);
+		void  Contain(std::span<const Particle> a_particles, const Colliders& a_colliders);
+		void  Blend(std::span<Particle> a_particles, float a_seconds);
+		void  PassCanals(std::span<Particle> a_particles, const Colliders& a_colliders, float a_seconds);
 		static std::optional<Vec3> Carrier(const Colliders& a_colliders, int a_surface, float a_along, Vec3 a_position);
 
 		float                                                _spacing;
@@ -113,6 +119,8 @@ namespace FourStrands::Fluid
 		std::vector<Vec3>                                    _correction;
 		std::vector<float>                                   _lambda;
 		std::vector<float>                                   _seepBudget;  // per canal: particles it may let back out now
+		std::vector<float>                                   _inBudget;    // per canal: particles it may let in now
+		std::vector<int>                                     _plug;        // per canal: the shaft through its open entrance, or -1
 		std::vector<bool>                                    _anchored;
 		std::vector<float>                                   _floor;
 		std::vector<float>                                   _weights;

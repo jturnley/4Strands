@@ -9,6 +9,7 @@ namespace FourStrands::SoftBodyBridge
 		SoftBodyFO4_GetCanal_t      getCanal{ nullptr };
 		SoftBodyFO4_SetUterusFill_t setFill{ nullptr };
 		SoftBodyFO4_SetOsOpen_t     setOs{ nullptr };
+		SoftBodyFO4_SetCanalSqueeze_t setSqueeze{ nullptr };
 
 		Fluid::Vec3 ToSolver(const Frame& a_frame, const float* a_point)
 		{
@@ -28,6 +29,7 @@ namespace FourStrands::SoftBodyBridge
 		getCanal = reinterpret_cast<SoftBodyFO4_GetCanal_t>(REX::W32::GetProcAddress(module, "SoftBodyFO4_GetCanal"));
 		setFill = reinterpret_cast<SoftBodyFO4_SetUterusFill_t>(REX::W32::GetProcAddress(module, "SoftBodyFO4_SetUterusFill"));
 		setOs = reinterpret_cast<SoftBodyFO4_SetOsOpen_t>(REX::W32::GetProcAddress(module, "SoftBodyFO4_SetOsOpen"));
+		setSqueeze = reinterpret_cast<SoftBodyFO4_SetCanalSqueeze_t>(REX::W32::GetProcAddress(module, "SoftBodyFO4_SetCanalSqueeze"));
 		if (getCanal) {
 			REX::INFO("SoftBody FO4 found: fluid goes into and out of her canal and uterus");
 		}
@@ -68,6 +70,12 @@ namespace FourStrands::SoftBodyBridge
 			woman.urethra = ToSolver(a_frame, canal.urethra);
 			woman.urethraOut = { canal.urethraOut[0], canal.urethraOut[1], canal.urethraOut[2] };
 		}
+		// version 3: the anal canal, rim first
+		if (canal.version >= 3) {
+			for (std::uint32_t i = 0; i < canal.analRingCount && i < SoftBodyFO4API::kMaxRings; ++i) {
+				shape.analRings.push_back({ ToSolver(a_frame, canal.analRings[i].centre), canal.analRings[i].radius * a_frame.scale });
+			}
+		}
 		return woman;
 	}
 
@@ -82,6 +90,13 @@ namespace FourStrands::SoftBodyBridge
 	{
 		if (setOs) {
 			setOs(a_formID, a_radius);
+		}
+	}
+
+	void SetCanalSqueeze(std::uint32_t a_formID, float a_squeeze)
+	{
+		if (setSqueeze) {
+			setSqueeze(a_formID, a_squeeze);
 		}
 	}
 }

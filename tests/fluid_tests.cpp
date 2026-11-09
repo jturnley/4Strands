@@ -83,6 +83,7 @@ namespace
 				Particle p;
 				p.position = { 0.07f + 0.6f * kSpacing + 0.0125f, y * kSpacing, 0.8f + z * kSpacing };
 				p.kind = static_cast<std::uint8_t>(a_kind);
+				p.age = 1800.0f;  // semen liquefied: fresh, it is a gel (checked below)
 				p.touching = true;
 				p.surface = 0;
 				particles.push_back(p);
@@ -285,6 +286,271 @@ int main()
 			perSquirt[2], perSquirt[3], out.size() * each, urethra.Remaining());
 		Check(out.size() * each <= 20.0f + each && out.size() * each > 19.0f, "it squirts what the gland holds, no more");
 		Check(perSquirt[3] == 0, "an empty gland gives nothing");
+	}
+
+	// ---------------------------------------------------------------- realism inside the canals
+	{
+		// her canal along a_inward from an entrance at height 0.5 m (above the ground), with an os and uterus beyond
+		auto shapeAlong = [](Vec3 a_inward) {
+			OpeningShape shape;
+			const Vec3   in = Normalize(a_inward, Vec3{ 0, 0, 1 });
+			const Vec3   entrance{ 0, 0, 0.5f };
+			for (int i = 0; i < 6; ++i) {
+				shape.rings.push_back({ entrance + in * (0.012f * i), 0.012f });
+			}
+			shape.cervix = entrance + in * 0.075f;
+			shape.os = { entrance + in * 0.08f, 0.0015f };
+			shape.uterusAxis = in;
+			shape.uterusLength = 0.05f;
+			shape.uterusRadius = 0.02f;
+			shape.uterusCentre = entrance + in * 0.11f;
+			shape.analRings = { { entrance + Vec3{ 0, -0.04f, 0 }, 0.006f }, { entrance + Vec3{ 0, -0.04f, 0 } + in * 0.03f, 0.008f },
+				{ entrance + Vec3{ 0, -0.04f, 0 } + in * 0.06f, 0.008f } };
+			return shape;
+		};
+		auto fill = [](std::vector<Particle>& a_out, int a_canal, Vec3 a_at, int a_count, Kind a_kind) {
+			for (int k = 0; k < a_count; ++k) {
+				Particle p;
+				p.position = a_at + Vec3{ ((k % 3) - 1) * kSpacing, (((k / 3) % 3) - 1) * kSpacing, (k / 9) * 0.5f * kSpacing };
+				p.kind = static_cast<std::uint8_t>(a_kind);
+				p.canal = static_cast<std::int16_t>(a_canal);
+				a_out.push_back(p);
+			}
+		};
+		auto outside = [](const std::vector<Particle>& a_particles) {
+			std::size_t n = 0;
+			for (const auto& p : a_particles) {
+				n += p.canal < 0 ? 1 : 0;
+			}
+			return n;
+		};
+		auto run = [](Solver& a_solver, std::vector<Particle>& a_particles, const OpeningCanals& a_canals, float a_seconds,
+					   std::span<const Capsule> a_capsules = {}) {
+			Ground              ground(0.5f);
+			std::vector<Anchor> anchors;
+			Colliders           colliders{ a_capsules, {}, a_canals.canals, nullptr };
+			for (float t = 0; t < a_seconds; t += kStep) {
+				a_solver.Step(a_particles, anchors, colliders, ground, kStep);
+			}
+		};
+
+		std::printf("liquefaction\n");
+		{
+			auto thigh = [&](float a_age) {
+				Solver                solver(kSpacing, Parameters{});
+				std::vector<Capsule>  capsules{ { { 0, 0, 0.5f }, { 0.02f, 0, 0.9f }, 0.07f, {}, {} } };
+				std::vector<Particle> particles;
+				for (int z = 0; z < 3; ++z) {
+					for (int y = -2; y <= 2; ++y) {
+						Particle p;
+						p.position = { 0.07f + 0.6f * kSpacing + 0.0125f, y * kSpacing, 0.8f + z * kSpacing };
+						p.touching = true;
+						p.surface = 0;
+						p.age = a_age;
+						particles.push_back(p);
+					}
+				}
+				OpeningCanals none;
+				run(solver, particles, none, 2.0f, capsules);
+				float lowest = 1e9f;
+				for (const auto& p : particles) {
+					lowest = std::min(lowest, p.position.z);
+				}
+				return 0.8f - lowest;
+			};
+			const float fresh = thigh(0.0f), liquid = thigh(1800.0f);
+			std::printf("  down a thigh in 2 s: fresh semen %.3f m, after 30 min %.3f m\n", fresh, liquid);
+			Check(liquid > 1.3f * fresh, "fresh semen is a gel that runs slower; it thins with age");
+		}
+
+		std::printf("mixing\n");
+		{
+			Solver                solver(kSpacing, Parameters{});
+			std::vector<Particle> particles;
+			auto                  built = BuildCanals(shapeAlong({ 0, 0.3f, -1 }), 0.3f, 0.003f);   // lying back: pools at the cervix
+			fill(particles, built.walls.back(), shapeAlong({ 0, 0.3f, -1 }).cervix + Vec3{ 0, 0, 0.004f }, 27, Kind::kSemen);
+			fill(particles, built.walls.back(), shapeAlong({ 0, 0.3f, -1 }).cervix + Vec3{ 0, 0, 0.010f }, 27, Kind::kSecretion);
+			run(solver, particles, built, 5.0f);
+			std::size_t blended = 0;
+			for (const auto& p : particles) {
+				const float m = SemenShare(p.kind, p.mix);
+				blended += m > 0.1f && m < 0.9f ? 1 : 0;
+			}
+			std::printf("  27 semen and 27 secretion pooled together, 5 s: %zu now a cloudy blend\n", blended);
+			Check(blended >= 10, "semen and secretion that touch blend");
+		}
+
+		std::printf("posture\n");
+		std::size_t standingOut = 0, lyingOut = 0;
+		for (int posture = 0; posture < 2; ++posture) {
+			// standing: the vagina goes up into her; on her back: it runs back and a little down toward the cervix
+			const Vec3            in = posture == 0 ? Vec3{ 0, 0.3f, 1 } : Vec3{ 0, 1, -0.25f };
+			auto                  shape = shapeAlong(in);
+			auto                  built = BuildCanals(shape, 0.3f, 0.003f);
+			Solver                solver(kSpacing, Parameters{});
+			std::vector<Particle> particles;
+			fill(particles, built.walls.back(), shape.cervix - Normalize(in, {}) * 0.006f, 45, Kind::kSemen);
+			for (auto& p : particles) {
+				p.age = 1800.0f;  // liquefied
+			}
+			run(solver, particles, built, 8.0f);
+			(posture == 0 ? standingOut : lyingOut) = outside(particles);
+		}
+		std::printf("  45 particles by the cervix, 8 s: %zu ran out of her standing, %zu lying on her back\n", standingOut, lyingOut);
+		Check(standingOut > 20 && lyingOut <= 2, "it pools against the cervix while she lies back, and runs out when she stands");
+
+		std::printf("uptake (her climax)\n");
+		{
+			std::size_t entered[2]{};
+			for (int climax = 0; climax < 2; ++climax) {
+				const Vec3            in{ 0, 1, -0.25f };  // on her back
+				auto                  shape = shapeAlong(in);
+				Solver                solver(kSpacing, Parameters{});
+				std::vector<Particle> particles;
+				auto                  built = BuildCanals(shape, 0.3f, 0.003f);
+				fill(particles, built.walls.back(), shape.cervix - Normalize(in, {}) * 0.006f, 45, Kind::kSemen);
+				Contractions contractions;
+				std::mt19937 random(9);
+				if (climax) {
+					contractions.Start(1.0f, random);
+				}
+				Ground              ground(0.5f);
+				std::vector<Anchor> anchors;
+				for (float t = 0; t < 6.0f; t += kStep) {
+					const float pulse = contractions.Step(kStep);
+					built = BuildCanals(shape, 0.3f, 0.003f, OpeningMood{ pulse, 0.0f, 0.0f });
+					Colliders colliders{ {}, {}, built.canals, nullptr };
+					solver.Step(particles, anchors, colliders, ground, kStep);
+				}
+				entered[climax] = Count(particles, built.uterus);
+			}
+			std::printf("  semen waiting at a closed os, 6 s: %zu in the uterus without her climax, %zu with it\n", entered[0], entered[1]);
+			Check(entered[0] == 0 && entered[1] >= 8, "her climax draws semen in through the os; a closed os lets none in otherwise");
+		}
+
+		std::printf("squeeze and movement\n");
+		{
+			std::size_t out[3]{};
+			for (int mode = 0; mode < 3; ++mode) {
+				const Vec3            in{ 0, 1, -0.25f };  // on her back: nothing runs out by itself
+				auto                  shape = shapeAlong(in);
+				Solver                solver(kSpacing, Parameters{});
+				std::vector<Particle> particles;
+				auto                  built = BuildCanals(shape, 0.3f, 0.003f);
+				for (int link = 1; link < 4; ++link) {
+					fill(particles, built.walls[static_cast<std::size_t>(link)], shape.rings[static_cast<std::size_t>(link)].centre, 9, Kind::kSecretion);
+				}
+				Contractions contractions;
+				std::mt19937 random(4);
+				if (mode == 1) {
+					contractions.Start(1.0f, random);
+				}
+				Ground              ground(0.5f);
+				std::vector<Anchor> anchors;
+				for (float t = 0; t < 5.0f; t += kStep) {
+					const float pulse = contractions.Step(kStep);
+					// squeezing without the uptake (as the vagina's own contractions); moving: agitation 1
+					built = BuildCanals(shape, 0.3f, 0.003f, OpeningMood{ 0.0f, pulse, mode == 2 ? 1.0f : 0.0f });
+					Colliders colliders{ {}, {}, built.canals, nullptr };
+					solver.Step(particles, anchors, colliders, ground, kStep);
+				}
+				out[mode] = outside(particles);
+			}
+			std::printf("  27 particles in her vagina, on her back, 5 s: %zu out still, %zu with contractions, %zu while she moves\n", out[0],
+				out[1], out[2]);
+			Check(out[1] > out[0] + 3 && out[2] > out[0] + 3, "contractions and movement push it out");
+		}
+
+		std::printf("shaft: plug, gush, coating and foam\n");
+		{
+			const Vec3            in{ 0, 0, 1 };  // standing: everything would run out
+			auto                  shape = shapeAlong(in);
+			auto                  built = BuildCanals(shape, 0.3f, 0.003f);
+			Solver                solver(kSpacing, Parameters{});
+			std::vector<Particle> particles;
+			for (int link = 0; link < 5; ++link) {
+				fill(particles, built.walls[static_cast<std::size_t>(link)], shape.rings[static_cast<std::size_t>(link)].centre + Vec3{ 0.008f, 0, 0 } +
+					Vec3{ 0, 0, link == 0 ? 0.006f : 0.0f }, 9,
+					Kind::kSemen);
+			}
+			for (auto& p : particles) {
+				p.mix = 0.5f;  // half semen, half secretion: what thrusting whips to foam
+				p.age = 1800.0f;
+			}
+			// his shaft fills the vagina: from below her to the cervix
+			const Vec3            entrance = shape.rings[0].centre;
+			Ground                ground(0.5f);
+			std::vector<Anchor>   anchors;
+			std::size_t           heldIn = 0, gushed = 0;
+			float                 depth = 0.07f, lastDepth = depth;
+			for (float t = 0; t < 4.0f; t += kStep) {
+				// 2.5 s of strokes (4 a second, 2 cm deep), then he pulls out over 0.3 s
+				if (t < 2.5f) {
+					depth = 0.06f + 0.01f * std::sin(t * 2.0f * 3.14159f * 4.0f);
+				} else {
+					depth = std::max(-0.02f, 0.06f - (t - 2.5f) / 0.3f * 0.08f);
+				}
+				const float speed = (depth - lastDepth) / kStep;
+				lastDepth = depth;
+				Capsule shaft{ entrance - in * 0.15f, entrance + in * depth, 0.0105f, in * speed, in * speed, true };
+				Capsule shafts[] = { shaft };
+				Colliders colliders{ shafts, {}, built.canals, nullptr };
+				solver.Step(particles, anchors, colliders, ground, kStep);
+				if (t < 2.5f) {
+					heldIn = particles.size() - outside(particles);
+				}
+			}
+			gushed = outside(particles);
+			std::size_t foam = 0, coated = 0;
+			for (const auto& p : particles) {
+				foam += p.kind == static_cast<std::uint8_t>(Kind::kFoam) ? 1 : 0;
+				coated += p.whip > 0.0f ? 1 : 0;
+			}
+			std::printf("  45 particles of a half-and-half mix: %zu still in her while he thrusts, %zu out after he pulls out; %zu dragged by him, %zu foamed\n",
+				heldIn, gushed, coated, foam);
+			Check(heldIn >= 22, "his shaft plugs her: most stays in while he is in her, standing up");
+			Check(gushed >= 22, "it gushes out when he pulls out");
+			Check(coated >= 10 && foam >= 3, "his strokes drag it along, and at her entrance whip the mix to foam");
+		}
+
+		std::printf("absorption\n");
+		{
+			std::mt19937          random(2);
+			auto                  built = BuildCanals(shapeAlong({ 0, 1, -0.25f }), 0.3f, 0.003f);
+			std::vector<Particle> particles;
+			fill(particles, built.walls[2], { 0, 0, 0 }, 200, Kind::kSemen);
+			fill(particles, built.uterus, { 0, 0, 0 }, 200, Kind::kSemen);
+			for (auto& p : particles) {
+				p.age = 700.0f;
+			}
+			for (int s = 0; s < 600; ++s) {   // 10 minutes in 1 s steps, past a 10-minute grace, at 1/600 a second
+				Absorb(particles, built, 1.0f, 600.0f, 1.0f / 600.0f, random);
+			}
+			std::printf("  200 in the vagina and 200 in the uterus, all past the grace, 10 min: %zu and %zu left\n", Count(particles, built.walls[2]),
+				Count(particles, built.uterus));
+			Check(Count(particles, built.walls[2]) < 100 && Count(particles, built.uterus) > Count(particles, built.walls[2]),
+				"old fluid is absorbed, the uterus's slower");
+		}
+
+		std::printf("anal canal\n");
+		{
+			auto                  shape = shapeAlong({ 0, 0.3f, 1 });   // standing
+			auto                  built = BuildCanals(shape, 0.3f, 0.003f);
+			Check(built.anal.size() == 2 && built.canals[static_cast<std::size_t>(built.anal[0])].open, "its own chain, open at the anus");
+			Solver                solver(kSpacing, Parameters{});
+			std::vector<Particle> particles;
+			fill(particles, built.anal.back(), shape.analRings.back().centre, 18, Kind::kSemen);
+			for (auto& p : particles) {
+				p.age = 1800.0f;
+			}
+			run(solver, particles, built, 6.0f);
+			std::size_t inVagina = 0;
+			for (const auto& p : particles) {
+				inVagina += std::ranges::find(built.walls, p.canal) != built.walls.end() ? 1 : 0;
+			}
+			std::printf("  18 particles deep in her anal canal, standing, 6 s: %zu out, %zu crossed into the vagina\n", outside(particles), inVagina);
+			Check(outside(particles) >= 9 && inVagina == 0, "it leaks out of the anus, and never into the vagina");
+		}
 	}
 
 	std::printf("%s\n", failures ? "SOME CHECKS FAILED" : "all checks passed");

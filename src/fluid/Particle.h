@@ -55,5 +55,8 @@ namespace FourStrands::Fluid
 		bool          touching{};
 		std::uint8_t  kind{};          // Fluid::Kind
 		std::int16_t  canal{ -1 };     // the canal (Colliders::canals) it is inside, or -1
+		float         age{};           // seconds since it was made (semen liquefies with it; old fluid is absorbed)
+		float         mix{ -1.0f };    // semen's share of it, 0-1, where semen and secretion have mixed (-1: its kind's own)
+		float         whip{};          // how far it has been dragged along a moving shaft (metres): enough, mixed, and it foams
 	};
 }

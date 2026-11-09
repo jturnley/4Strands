@@ -80,6 +80,43 @@ flow lost along the walls.
 particles a second, so it drips out slowly. While the os is open, the fluid flows freely. In a standing woman, an open
 os drains straight back down, so the os should open only while semen is shot through it.
 
+## Inside her
+
+All of this is checked offline in `FluidTests`.
+
+- **Semen liquefies.** Freshly shot semen is a thick gel. Its viscosity starts at 3×, its cohesion at 1.8×, and its
+  friction and grip at 3× (`kGel*`). These ease to the liquid's values with the particle's age (`Parameters::liquefy`,
+  6 minutes to thin by about two-thirds), so it clumps at first and runs and drips later. Down a thigh in 2 s, fresh
+  semen ran 4.8 cm and 30-minute-old semen 14.3 cm.
+- **Mixing.** Semen and secretion that touch even out their mix (`Particle::mix`, the semen's share) at 0.3 a second.
+  The blend's traits and colour run from clear secretion to white semen, so drips range from clear to cloudy to white.
+- **His shaft** is a `Capsule` with `shaft` set. Inside her canals, only shafts touch the fluid.
+  - **The plug:** while a shaft passes through her open entrance, it seals her. In the tests she stood with him in her
+    for 2.5 s of strokes and all 45 particles stayed in.
+  - **The gush:** when he pulls out, what was held gushes out. In the tests, all 45 came out.
+  - **The film and his tip:** where his shaft fills her canal, fluid ahead of his tip is pushed and held ahead of it.
+    Fluid alongside him stays against her wall as a film he drags on every stroke.
+- **Foam.** A semen-and-secretion mix sheared between his moving shaft and her still wall gathers `whip`. After 0.3 m of
+  shaft sliding past it (about 2 s of brisk strokes) it becomes `Kind::kFoam`: white, thick and clinging. It does this
+  only at her entrance and outside her, where air is worked in. Deeper in, it just coats him.
+- **Posture.** The vagina's deepest link widens 1.3× toward the cervix: that is the vault. Gravity does the rest.
+  Lying on her back, semen pools against the cervix (none of 45 particles came out in 8 s). Standing, it runs out (all
+  45 did).
+- **The os** shuts both ways while closed: `Canal::inflow` 0 into it, and `seep` out of the uterus.
+- **Her climax** drives `Contractions`: 5 to 8 pulses about 0.8 s apart, each sharp then easing.
+  - **Uptake:** the womb draws semen waiting at the cervix in through the os (`OpeningMood::uptake`: the vault, os and
+    uterus pull inward, and the os opens inward only). In the tests, with semen pooled at a closed os, none entered
+    without her climax and all 45 did with it.
+  - **Squeeze:** the vagina tightens by up to 35% and pushes its contents out (`squeeze`). SoftBody tightens its rings
+    too (`SoftBodyFO4_SetCanalSqueeze`).
+- **Movement** (`agitation`, from her pelvis's acceleration) shakes fluid out of the vagina and anal canal, and makes
+  the uterus seep up to 4× faster.
+- **Absorption** (`Absorb`): fluid that has been in her past a grace period is absorbed at a set rate, half that in the
+  uterus. This keeps the count bounded, and the uterus's fill drains over minutes.
+- **The anal canal** is its own chain from SoftBody's anal rings (API v3): open at the anus, closed at its deepest
+  ring. It has no secretion, os or uterus. The shaft, plug, gush, foam, movement and absorption all apply to it. Fluid in
+  it never crosses into the vagina.
+
 ## SoftBody FO4 (`src/SoftBodyBridge.h`)
 
 The bridge reads SoftBody's exported canal (`extern/softbodyfo4/SoftBodyFO4API.h`, a copy of SoftBody's) and converts it
@@ -105,6 +142,6 @@ along the vagina's axis. A version 1 SoftBody leaves the urethra unset.
    - **his climax inside her:** semen at his tip, with the os opened while it passes (`SetOsOpen`);
    - **the uterus:** its particle count goes to `SetUterusFill`;
    - **urine:** a scene action.
-2. **The shaft as a pusher**, as fo4-ocbpc does it, so his thrusts move fluid in the canal.
+2. **In the scene:** his shaft capsule with `shaft` set; `Contractions` from her climax into the mood and into `SetCanalSqueeze`; her pelvis's acceleration as `agitation`; `Absorb` every second.
 3. **Drawing.** This is still blocked by the Phase 0 strand: the per-frame buffer of a `BSDynamicTriShape`, see
    SPIKE.md. Wet skin's shine needs a material or shader approach too.

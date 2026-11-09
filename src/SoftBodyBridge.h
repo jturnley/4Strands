@@ -34,4 +34,6 @@ namespace FourStrands::SoftBodyBridge
 	// How full her uterus is (0-1; SoftBody swells it), and how far to open the os (game units; 0 back to rest)
 	void SetUterusFill(std::uint32_t a_formID, float a_fill);
 	void SetOsOpen(std::uint32_t a_formID, float a_radius);
+	// her vaginal canal tightens, 0-1 (her climax's contractions; SoftBody API v3)
+	void SetCanalSqueeze(std::uint32_t a_formID, float a_squeeze);
 }

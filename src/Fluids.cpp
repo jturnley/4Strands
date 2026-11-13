@@ -1,5 +1,7 @@
 #include "Fluids.h"
 
+#include "Film.h"
+
 #include "PluginInterface.h"
 #include "Settings.h"
 #include "SoftBodyBridge.h"
@@ -69,6 +71,7 @@ namespace FourStrands::Fluids
 			float                       logTimer{};
 			float                       absorbTimer{};
 			float                       groundTimer{};
+			float                       filmTimer{};
 			float                       osOpenFor{};
 			Vec3                        lastEntrance[2];
 			int                         entranceSeen{};
@@ -229,6 +232,16 @@ namespace FourStrands::Fluids
 				Meet(a_session, woman->formID);
 			}
 			auto* her = RE::TESForm::GetFormByID<RE::Actor>(a_session.her);
+			// the film on her skin (stage 1: a test pattern)
+			if (Settings::Get().film && her) {
+				if ((a_session.filmTimer -= a_seconds) <= 0.0f) {
+					a_session.filmTimer = 1.0f;
+					Film::Attach(her->Get3D());
+				}
+				if (Settings::Get().filmTestPattern) {
+					Film::TestPattern(a_seconds);
+				}
+			}
 			if ((a_session.groundTimer -= a_seconds) <= 0.0f) {
 				a_session.groundTimer = 1.0f;
 				SetGround(a_session, her);
@@ -378,6 +391,7 @@ namespace FourStrands::Fluids
 
 		void End()
 		{
+			Film::Detach();
 			if (session && session->her) {
 				SoftBodyBridge::SetCanalSqueeze(session->her, 0.0f);
 				SoftBodyBridge::SetOsOpen(session->her, 0.0f);
@@ -469,5 +483,6 @@ namespace FourStrands::Fluids
 		startedThread = -1;
 		stopped = false;
 		session.reset();
+		Film::Detach();
 	}
 }

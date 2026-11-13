@@ -43,6 +43,10 @@ namespace FourStrands::Settings
 					values.fluidMaxParticles = static_cast<std::uint32_t>(std::stoul(a_value));
 				} else if (is("Fluids", "PenisRadius")) {
 					values.fluidPenisRadius = std::stof(a_value);
+				} else if (is("Film", "Enabled")) {
+					values.film = ToBool(a_value);
+				} else if (is("Film", "TestPattern")) {
+					values.filmTestPattern = ToBool(a_value);
 				} else if (is("Spike", "ProbeBody")) {
 					values.probeBody = ToBool(a_value);
 				} else if (is("Spike", "Strand")) {

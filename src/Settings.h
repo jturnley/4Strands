@@ -14,6 +14,10 @@ namespace FourStrands::Settings
 		std::uint32_t fluidMaxParticles{ 3000 };
 		float         fluidPenisRadius{ 1.6f };   // game units: his shaft, as it pushes fluid
 
+		// [Film] the fluid film drawn on her skin (SoftBody FO4's film overlays)
+		bool film{ true };
+		bool filmTestPattern{ true };  // stage 1: a moving test pattern while a scene runs
+
 		// [Spike] Phase 0 checks: read body vertex data, and draw one strand mesh.
 		bool          probeBody{ true };
 		bool          strand{ true };
